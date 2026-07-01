@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"time"
+
+	"pamojabuild1/backend/internal/auth"
 )
 
 type AuthRepository struct {
