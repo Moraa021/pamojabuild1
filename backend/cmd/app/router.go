@@ -63,7 +63,7 @@ func NewRouter(db *sql.DB, cfg *config.Config) *gin.Engine {
     taskH := taskHandler.NewTaskHandler(taskSvc)
 
     trusteeRepo := trusteeRepo.NewTrusteeRepository(db)
-    trusteeSvc := trusteeService.NewTrusteeService(trusteeRepo, trusteeRepo)
+    trusteeSvc := trusteeService.NewTrusteeService(trusteeRepo, trusteeRepo, eventBus)
     trusteeH := trusteeHandler.NewTrusteeHandler(trusteeSvc)
 
     lightningRepo := lightningRepo.NewLightningRepository(db)
@@ -71,7 +71,7 @@ func NewRouter(db *sql.DB, cfg *config.Config) *gin.Engine {
     lightningH := lightningHandler.NewLightningHandler(lightningSvc)
 
     ledgerRepo := ledgerRepo.NewLedgerRepository(db)
-    ledgerSvc := ledgerService.NewLedgerService(ledgerRepo, cfg.ServerSecret)
+    ledgerSvc := ledgerService.NewLedgerService(ledgerRepo, cfg.ServerSecret, eventBus)
     ledgerH := ledgerHandler.NewLedgerHandler(ledgerSvc)
 
     escrowRepo := escrowRepo.NewEscrowRepository(db)

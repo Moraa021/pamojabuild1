@@ -12,6 +12,7 @@ const (
     TaskLiquidating      EventType = "task.liquidating"
     TaskReadyForPayout   EventType = "task.ready_for_payout"
     TrusteeSigned        EventType = "trustee.signed"
+    TrusteeRegistered    EventType = "trustee.registered"
     PayoutCompleted      EventType = "payout.completed"
     TaskArchived         EventType = "task.archived"
     VolunteerVerified    EventType = "volunteer.verified"
@@ -20,6 +21,7 @@ const (
 
     // Internal operational events
     PaymentSettled        EventType = "payment.settled"
+    TransactionRecorded   EventType = "transaction.recorded"
     FinancialStateChanged EventType = "financial.state_changed"
     TaskStatusChanged     EventType = "task.status.changed"
 )

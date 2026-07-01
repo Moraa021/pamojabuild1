@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"sync"
 
+	"pamojabuild1/backend/internal/events"
 	"pamojabuild1/backend/internal/ledger"
 )
 
@@ -19,10 +20,11 @@ type LedgerService struct {
 	repo         ledger.Repository
 	serverSecret string
 	mu           sync.Mutex
+	eventBus     *events.EventBus
 }
 
-func NewLedgerService(repo ledger.Repository, serverSecret string) *LedgerService {
-	return &LedgerService{repo: repo, serverSecret: serverSecret}
+func NewLedgerService(repo ledger.Repository, serverSecret string, eventBus *events.EventBus) *LedgerService {
+	return &LedgerService{repo: repo, serverSecret: serverSecret, eventBus: eventBus}
 }
 
 func (s *LedgerService) CalculateRowHMAC(entry *ledger.LedgerEntry, previousHash []byte, serverSecret string) ([]byte, error) {
@@ -93,7 +95,23 @@ func (s *LedgerService) RecordValidatedTransaction(ctx context.Context, taskSlug
 	}
 
 	entry.RowHMAC = rowHMAC
-	return s.repo.AppendEntry(ctx, entry)
+	if err := s.repo.AppendEntry(ctx, entry); err != nil {
+		return err
+	}
+
+	if s.eventBus != nil {
+		s.eventBus.Publish(events.Event{
+			Type: events.TransactionRecorded,
+			Payload: map[string]interface{}{
+				"task_slug":  taskSlug,
+				"entry_type": entryType,
+				"amount_sats": amountSats,
+				"reference_id": refID,
+			},
+		})
+	}
+
+	return nil
 }
 
 func (s *LedgerService) GetTaskBalance(ctx context.Context, taskSlug string) (*ledger.BalanceSummary, error) {

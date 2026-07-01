@@ -53,7 +53,7 @@ func (m *mockTrusteeKeyRepo) GetSpecificTrustee(ctx context.Context, taskSlug st
 
 func TestRegisterUser(t *testing.T) {
     userRepo := &mockTrusteeUserRepo{}
-    svc := NewTrusteeService(nil, userRepo)
+    svc := NewTrusteeService(nil, userRepo, nil)
 
     user, err := svc.RegisterUser(context.Background(), "alice@example.com", "secret", "Alice")
     if err != nil {
@@ -69,7 +69,7 @@ func TestRegisterUser(t *testing.T) {
 
 func TestAssignTrusteeSlot(t *testing.T) {
     keyRepo := &mockTrusteeKeyRepo{}
-    svc := NewTrusteeService(keyRepo, nil)
+    svc := NewTrusteeService(keyRepo, nil, nil)
 
     err := svc.AssignTrusteeSlot(context.Background(), "task1", &trustee.TrusteeKey{TrusteeIndex: 2})
     if err != nil {
@@ -81,7 +81,7 @@ func TestAssignTrusteeSlot(t *testing.T) {
 }
 
 func TestAssignTrusteeSlotInvalidIndex(t *testing.T) {
-    svc := NewTrusteeService(nil, nil)
+    svc := NewTrusteeService(nil, nil, nil)
     err := svc.AssignTrusteeSlot(context.Background(), "task1", &trustee.TrusteeKey{TrusteeIndex: 5})
     if !errors.Is(err, ErrInvalidTrusteeIndex) {
         t.Fatalf("expected ErrInvalidTrusteeIndex, got %v", err)
@@ -90,7 +90,7 @@ func TestAssignTrusteeSlotInvalidIndex(t *testing.T) {
 
 func TestAssignTrusteeSlotTaken(t *testing.T) {
     keyRepo := &mockTrusteeKeyRepo{specific: &trustee.TrusteeKey{TrusteeIndex: 1, UserID: 42}}
-    svc := NewTrusteeService(keyRepo, nil)
+    svc := NewTrusteeService(keyRepo, nil, nil)
 
     err := svc.AssignTrusteeSlot(context.Background(), "task1", &trustee.TrusteeKey{TrusteeIndex: 1})
     if !errors.Is(err, ErrSlotAlreadyTaken) {

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 
+	"pamojabuild1/backend/internal/events"
 	"pamojabuild1/backend/internal/trustee"
 )
 
@@ -19,10 +20,11 @@ var (
 type TrusteeService struct {
 	keyRepo  trustee.KeyRepository
 	userRepo trustee.UserRepository
+	eventBus *events.EventBus
 }
 
-func NewTrusteeService(keyRepo trustee.KeyRepository, userRepo trustee.UserRepository) *TrusteeService {
-	return &TrusteeService{keyRepo: keyRepo, userRepo: userRepo}
+func NewTrusteeService(keyRepo trustee.KeyRepository, userRepo trustee.UserRepository, eventBus *events.EventBus) *TrusteeService {
+	return &TrusteeService{keyRepo: keyRepo, userRepo: userRepo, eventBus: eventBus}
 }
 
 func (s *TrusteeService) RegisterUser(ctx context.Context, email, password, displayName string) (*trustee.User, error) {
@@ -50,7 +52,21 @@ func (s *TrusteeService) AssignTrusteeSlot(ctx context.Context, slug string, key
 	}
 
 	key.TaskSlug = slug
-	return s.keyRepo.SaveKeys(ctx, key)
+	if err := s.keyRepo.SaveKeys(ctx, key); err != nil {
+		return err
+	}
+
+	if s.eventBus != nil {
+		s.eventBus.Publish(events.Event{
+			Type: events.TrusteeRegistered,
+			Payload: map[string]interface{}{
+				"task_slug":     slug,
+				"trustee_index": key.TrusteeIndex,
+			},
+		})
+	}
+
+	return nil
 }
 
 func (s *TrusteeService) VerifyWebCryptoSignature(ctx context.Context, pubKeyHex string, message []byte, signatureHex string) (bool, error) {

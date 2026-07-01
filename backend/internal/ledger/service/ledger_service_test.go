@@ -49,7 +49,7 @@ func (m *mockLedgerRepo) IncrementDerivationIndex(ctx context.Context, taskSlug 
 
 func TestRecordValidatedTransaction(t *testing.T) {
     repo := &mockLedgerRepo{}
-    svc := NewLedgerService(repo, "secret")
+    svc := NewLedgerService(repo, "secret", nil)
 
     err := svc.RecordValidatedTransaction(context.Background(), "task1", "deposit", 100, "ref123")
     if err != nil {
@@ -65,7 +65,7 @@ func TestRecordValidatedTransaction(t *testing.T) {
 
 func TestVerifyEntireChainIntegrity(t *testing.T) {
     repo := &mockLedgerRepo{}
-    svc := NewLedgerService(repo, "secret")
+    svc := NewLedgerService(repo, "secret", nil)
 
     err := svc.RecordValidatedTransaction(context.Background(), "task1", "deposit", 100, "ref123")
     if err != nil {
