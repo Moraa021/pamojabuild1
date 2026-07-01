@@ -27,7 +27,7 @@ func (r *AuthRepository) Create(ctx context.Context, user *auth.User) error {
 	user.UpdatedAt = now
 
 	return r.db.QueryRowContext(ctx, query,
-		user.Email, user.PasswordHash, user.DisplayName, user.Role, now, now,
+		user.PhoneNumber, user.PasswordHash, user.DisplayName, user.Role, now, now,
 	).Scan(&user.ID)
 }
 
@@ -35,7 +35,7 @@ func (r *AuthRepository) GetByID(ctx context.Context, id int64) (*auth.User, err
 	user := &auth.User{}
 	query := `SELECT id, email, password_hash, display_name, role, created_at, updated_at FROM users WHERE id = $1`
 	err := r.db.QueryRowContext(ctx, query, id).Scan(
-		&user.ID, &user.Email, &user.PasswordHash, &user.DisplayName, &user.Role, &user.CreatedAt, &user.UpdatedAt,
+		&user.ID, &user.PhoneNumber, &user.PasswordHash, &user.DisplayName, &user.Role, &user.CreatedAt, &user.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -43,11 +43,11 @@ func (r *AuthRepository) GetByID(ctx context.Context, id int64) (*auth.User, err
 	return user, nil
 }
 
-func (r *AuthRepository) GetByEmail(ctx context.Context, email string) (*auth.User, error) {
+func (r *AuthRepository) GetByPhone(ctx context.Context, phone string) (*auth.User, error) {
 	user := &auth.User{}
 	query := `SELECT id, email, password_hash, display_name, role, created_at, updated_at FROM users WHERE email = $1`
-	err := r.db.QueryRowContext(ctx, query, email).Scan(
-		&user.ID, &user.Email, &user.PasswordHash, &user.DisplayName, &user.Role, &user.CreatedAt, &user.UpdatedAt,
+	err := r.db.QueryRowContext(ctx, query, phone).Scan(
+		&user.ID, &user.PhoneNumber, &user.PasswordHash, &user.DisplayName, &user.Role, &user.CreatedAt, &user.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err

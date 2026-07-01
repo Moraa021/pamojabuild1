@@ -94,7 +94,7 @@ func approveApplication(t *testing.T, db *sql.DB, slug string, volunteerID int64
 func TestFullFlow(t *testing.T) {
     router, db := newTestRouter(t)
 
-    registerBody := `{"email":"user@example.com","password":"password123","display_name":"Test User"}`
+    registerBody := `{"phone_number":"+15550000001","password":"password123","display_name":"Test User"}`
     resp := doJSONRequest(t, router, http.MethodPost, "/api/v1/auth/register", "", registerBody)
     if resp.Code != http.StatusCreated {
         t.Fatalf("expected 201 from register, got %d: %s", resp.Code, resp.Body.String())
@@ -105,7 +105,7 @@ func TestFullFlow(t *testing.T) {
         t.Fatalf("failed to decode register response: %v", err)
     }
 
-    signInBody := `{"email":"user@example.com","password":"password123"}`
+    signInBody := `{"phone_number":"+15550000001","password":"password123"}`
     resp = doJSONRequest(t, router, http.MethodPost, "/api/v1/auth/signin", "", signInBody)
     if resp.Code != http.StatusOK {
         t.Fatalf("expected 200 from signin, got %d: %s", resp.Code, resp.Body.String())

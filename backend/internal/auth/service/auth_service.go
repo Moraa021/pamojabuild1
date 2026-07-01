@@ -26,8 +26,8 @@ func NewAuthService(repo auth.Repository, jwtSecret string) *AuthService {
 	return &AuthService{repo: repo, jwtSecret: jwtSecret}
 }
 
-func (s *AuthService) Register(ctx context.Context, email, password, displayName string) (*auth.User, string, error) {
-	existing, _ := s.repo.GetByEmail(ctx, email)
+func (s *AuthService) Register(ctx context.Context, phone, password, displayName string) (*auth.User, string, error) {
+	existing, _ := s.repo.GetByPhone(ctx, phone)
 	if existing != nil {
 		return nil, "", ErrUserExists
 	}
@@ -38,7 +38,7 @@ func (s *AuthService) Register(ctx context.Context, email, password, displayName
 	}
 
 	user := &auth.User{
-		Email:        email,
+		PhoneNumber:  phone,
 		PasswordHash: string(hashedPassword),
 		DisplayName:  displayName,
 		Role:         "volunteer",
@@ -56,8 +56,8 @@ func (s *AuthService) Register(ctx context.Context, email, password, displayName
 	return user, token, nil
 }
 
-func (s *AuthService) SignIn(ctx context.Context, email, password string) (*auth.User, string, error) {
-	user, err := s.repo.GetByEmail(ctx, email)
+func (s *AuthService) SignIn(ctx context.Context, phone, password string) (*auth.User, string, error) {
+	user, err := s.repo.GetByPhone(ctx, phone)
 	if err != nil {
 		return nil, "", ErrInvalidCredentials
 	}
@@ -80,10 +80,10 @@ func (s *AuthService) SignOut(ctx context.Context, token string) error {
 
 func (s *AuthService) generateToken(user *auth.User) (string, error) {
 	claims := jwt.MapClaims{
-		"user_id": user.ID,
-		"email":   user.Email,
-		"role":    user.Role,
-		"exp":     time.Now().Add(24 * time.Hour).Unix(),
+		"user_id":      user.ID,
+		"phone_number": user.PhoneNumber,
+		"role":         user.Role,
+		"exp":          time.Now().Add(24 * time.Hour).Unix(),
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)

@@ -18,7 +18,7 @@ func NewAuthHandler(service auth.Service) *AuthHandler {
 
 // Register godoc
 // @Summary      Register a new user
-// @Description  Create a new user account and return an authentication token.
+// @Description  Create a new user account using phone number and password, and return a JWT token.
 // @Tags         Auth
 // @Accept       json
 // @Produce      json
@@ -34,7 +34,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
-	user, token, err := h.service.Register(c.Request.Context(), req.Email, req.Password, req.DisplayName)
+	user, token, err := h.service.Register(c.Request.Context(), req.PhoneNumber, req.Password, req.DisplayName)
 	if err != nil {
 		c.JSON(http.StatusConflict, ErrorResponse{Error: "registration_failed", Message: err.Error()})
 		return
@@ -50,7 +50,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 
 // SignIn godoc
 // @Summary      Sign in a user
-// @Description  Authenticate with email and password to receive a JWT token.
+// @Description  Authenticate with phone number and password to receive a JWT token.
 // @Tags         Auth
 // @Accept       json
 // @Produce      json
@@ -66,7 +66,7 @@ func (h *AuthHandler) SignIn(c *gin.Context) {
 		return
 	}
 
-	user, token, err := h.service.SignIn(c.Request.Context(), req.Email, req.Password)
+	user, token, err := h.service.SignIn(c.Request.Context(), req.PhoneNumber, req.Password)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, ErrorResponse{Error: "auth_failed", Message: "Invalid credentials"})
 		return
