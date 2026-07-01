@@ -15,12 +15,12 @@ var (
 )
 
 type EscrowService struct {
-	repo      escrow.PayoutOrchestrator
+	repo        escrow.SignatureRepository
 	trusteeRepo trustee.KeyRepository
 	ledgerRepo  ledger.Repository
 }
 
-func NewEscrowService(repo escrow.PayoutOrchestrator, trusteeRepo trustee.KeyRepository, ledgerRepo ledger.Repository) *EscrowService {
+func NewEscrowService(repo escrow.SignatureRepository, trusteeRepo trustee.KeyRepository, ledgerRepo ledger.Repository) *EscrowService {
 	return &EscrowService{
 		repo:        repo,
 		trusteeRepo: trusteeRepo,

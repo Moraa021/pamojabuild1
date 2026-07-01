@@ -33,8 +33,8 @@ func (s *ReputationService) CalculateReputation(ctx context.Context, userID int6
 		return nil, err
 	}
 
-	applications, _ := s.applicationRepo.GetByVolunteerID(ctx, userID)
-	submissions, _ := s.submissionRepo.GetByVolunteerID(ctx, userID)
+	applications, _ := s.applicationRepo.GetApplicationsByVolunteerID(ctx, userID)
+	submissions, _ := s.submissionRepo.GetSubmissionsByVolunteerID(ctx, userID)
 
 	completedSubmissions := 0
 	for _, sub := range submissions {

@@ -103,3 +103,7 @@ func (r *TrusteeRepository) GetByEmail(ctx context.Context, email string) (*trus
 	}
 	return u, nil
 }
+
+func (r *TrusteeRepository) Create(ctx context.Context, u *trustee.User) error {
+	return r.CreateUser(ctx, u)
+}

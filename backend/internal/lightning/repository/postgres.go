@@ -3,6 +3,8 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"fmt"
+	"time"
 
 	"pamojabuild1/backend/internal/lightning"
 )
@@ -43,8 +45,24 @@ func (r *LightningRepository) GetByPaymentHash(ctx context.Context, paymentHash 
 	return invoice, nil
 }
 
-func (r *LightningRepository) UpdateSettlement(ctx context.Context, paymentHash string, settledAt interface{}) error {
+func (r *LightningRepository) UpdateSettlement(ctx context.Context, paymentHash string, settledAt time.Time) error {
 	query := `UPDATE lightning_invoices SET settled = true, settled_at = $1 WHERE payment_hash = $2`
 	_, err := r.db.ExecContext(ctx, query, settledAt, paymentHash)
 	return err
+}
+
+func (r *LightningRepository) GenerateBolt11Invoice(ctx context.Context, taskSlug string, amountSats int64) (*lightning.Invoice, error) {
+	invoice := &lightning.Invoice{
+		PaymentRequest: fmt.Sprintf("lnbc%d...", amountSats),
+		PaymentHash:    fmt.Sprintf("hash_%s_%d", taskSlug, time.Now().Unix()),
+		AmountSats:     amountSats,
+		TaskSlug:       taskSlug,
+		Settled:        false,
+	}
+	return invoice, nil
+}
+
+func (r *LightningRepository) SubscribeInvoiceSettlements(ctx context.Context, callback func(settledInvoice *lightning.Invoice)) error {
+	// Placeholder: no real invoice subscription in this repository.
+	return nil
 }

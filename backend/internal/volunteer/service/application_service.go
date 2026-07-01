@@ -20,7 +20,7 @@ func NewApplicationService(applicationRepo volunteer.ApplicationRepository) *App
 }
 
 func (s *ApplicationService) ApplyForTask(ctx context.Context, taskSlug string, volunteerID int64, message string) (*volunteer.TaskApplication, error) {
-	existing, _ := s.applicationRepo.GetByTaskSlug(ctx, taskSlug, volunteerID)
+	existing, _ := s.applicationRepo.GetApplicationByTaskSlug(ctx, taskSlug, volunteerID)
 	if existing != nil {
 		return nil, ErrAlreadyApplied
 	}
@@ -31,7 +31,7 @@ func (s *ApplicationService) ApplyForTask(ctx context.Context, taskSlug string, 
 		Message:     message,
 	}
 
-	if err := s.applicationRepo.Create(ctx, app); err != nil {
+	if err := s.applicationRepo.CreateApplication(ctx, app); err != nil {
 		return nil, err
 	}
 
@@ -39,5 +39,5 @@ func (s *ApplicationService) ApplyForTask(ctx context.Context, taskSlug string, 
 }
 
 func (s *ApplicationService) GetApplications(ctx context.Context, volunteerID int64) ([]volunteer.TaskApplication, error) {
-	return s.applicationRepo.GetByVolunteerID(ctx, volunteerID)
+	return s.applicationRepo.GetApplicationsByVolunteerID(ctx, volunteerID)
 }

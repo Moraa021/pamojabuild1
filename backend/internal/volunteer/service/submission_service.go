@@ -27,7 +27,7 @@ func NewSubmissionService(
 }
 
 func (s *SubmissionService) SubmitWork(ctx context.Context, taskSlug string, volunteerID int64, description string, evidenceURLs []string) (*volunteer.TaskSubmission, error) {
-	app, err := s.applicationRepo.GetByTaskSlug(ctx, taskSlug, volunteerID)
+	app, err := s.applicationRepo.GetApplicationByTaskSlug(ctx, taskSlug, volunteerID)
 	if err != nil || app.Status != "approved" {
 		return nil, ErrNotApproved
 	}
@@ -39,7 +39,7 @@ func (s *SubmissionService) SubmitWork(ctx context.Context, taskSlug string, vol
 		EvidenceURLs: evidenceURLs,
 	}
 
-	if err := s.submissionRepo.Create(ctx, sub); err != nil {
+	if err := s.submissionRepo.CreateSubmission(ctx, sub); err != nil {
 		return nil, err
 	}
 
@@ -47,5 +47,5 @@ func (s *SubmissionService) SubmitWork(ctx context.Context, taskSlug string, vol
 }
 
 func (s *SubmissionService) GetSubmissions(ctx context.Context, volunteerID int64) ([]volunteer.TaskSubmission, error) {
-	return s.submissionRepo.GetByVolunteerID(ctx, volunteerID)
+	return s.submissionRepo.GetSubmissionsByVolunteerID(ctx, volunteerID)
 }

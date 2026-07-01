@@ -67,21 +67,21 @@ type ProfileRepository interface {
 }
 
 type ApplicationRepository interface {
-	Create(ctx context.Context, app *TaskApplication) error
-	GetByVolunteerID(ctx context.Context, volunteerID int64) ([]TaskApplication, error)
-	GetByTaskSlug(ctx context.Context, taskSlug string, volunteerID int64) (*TaskApplication, error)
+	CreateApplication(ctx context.Context, app *TaskApplication) error
+	GetApplicationsByVolunteerID(ctx context.Context, volunteerID int64) ([]TaskApplication, error)
+	GetApplicationByTaskSlug(ctx context.Context, taskSlug string, volunteerID int64) (*TaskApplication, error)
 	UpdateStatus(ctx context.Context, id int64, status string) error
 }
 
 type SubmissionRepository interface {
-	Create(ctx context.Context, sub *TaskSubmission) error
-	GetByVolunteerID(ctx context.Context, volunteerID int64) ([]TaskSubmission, error)
-	GetByTaskSlug(ctx context.Context, taskSlug string, volunteerID int64) (*TaskSubmission, error)
+	CreateSubmission(ctx context.Context, sub *TaskSubmission) error
+	GetSubmissionsByVolunteerID(ctx context.Context, volunteerID int64) ([]TaskSubmission, error)
+	GetSubmissionByTaskSlug(ctx context.Context, taskSlug string, volunteerID int64) (*TaskSubmission, error)
 	UpdateStatus(ctx context.Context, id int64, status string) error
 }
 
 type PaymentRepository interface {
-	Create(ctx context.Context, payment *Payment) error
-	GetByVolunteerID(ctx context.Context, volunteerID int64) ([]Payment, error)
-	UpdateStatus(ctx context.Context, id int64, status, txHash string) error
+	CreatePayment(ctx context.Context, payment *Payment) error
+	GetPaymentsByVolunteerID(ctx context.Context, volunteerID int64) ([]Payment, error)
+	UpdatePaymentStatus(ctx context.Context, id int64, status, txHash string) error
 }

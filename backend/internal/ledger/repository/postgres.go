@@ -85,3 +85,13 @@ func (r *LedgerRepository) GetAllEntries(ctx context.Context, taskSlug string) (
 	}
 	return entries, nil
 }
+
+func (r *LedgerRepository) UpdateBalances(ctx context.Context, taskSlug string, l2Delta, l1Delta int64) error {
+	// Placeholder implementation for ledger balance updates.
+	return nil
+}
+
+func (r *LedgerRepository) IncrementDerivationIndex(ctx context.Context, taskSlug string) error {
+	// Placeholder implementation for derivation index management.
+	return nil
+}

@@ -85,12 +85,12 @@ func (r *VolunteerRepository) CreateApplication(ctx context.Context, app *volunt
 	).Scan(&app.ID)
 }
 
-func (r *VolunteerRepository) GetByVolunteerID(ctx context.Context, volunteerID int64) ([]volunteer.TaskApplication, error) {
+func (r *VolunteerRepository) GetApplicationsByVolunteerID(ctx context.Context, volunteerID int64) ([]volunteer.TaskApplication, error) {
 	query := `
 		SELECT id, task_slug, volunteer_id, message, status, applied_at, reviewed_at
 		FROM task_applications WHERE volunteer_id = $1
 		ORDER BY applied_at DESC`
-	
+
 	rows, err := r.db.QueryContext(ctx, query, volunteerID)
 	if err != nil {
 		return nil, err
@@ -110,7 +110,7 @@ func (r *VolunteerRepository) GetByVolunteerID(ctx context.Context, volunteerID 
 	return applications, nil
 }
 
-func (r *VolunteerRepository) GetByTaskSlug(ctx context.Context, taskSlug string, volunteerID int64) (*volunteer.TaskApplication, error) {
+func (r *VolunteerRepository) GetApplicationByTaskSlug(ctx context.Context, taskSlug string, volunteerID int64) (*volunteer.TaskApplication, error) {
 	app := &volunteer.TaskApplication{}
 	
 	query := `
