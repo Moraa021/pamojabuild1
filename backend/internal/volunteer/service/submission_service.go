@@ -27,7 +27,6 @@ func NewSubmissionService(
 }
 
 func (s *SubmissionService) SubmitWork(ctx context.Context, taskSlug string, volunteerID int64, description string, evidenceURLs []string) (*volunteer.TaskSubmission, error) {
-	// Verify volunteer is approved for this task
 	app, err := s.applicationRepo.GetByTaskSlug(ctx, taskSlug, volunteerID)
 	if err != nil || app.Status != "approved" {
 		return nil, ErrNotApproved
@@ -49,8 +48,4 @@ func (s *SubmissionService) SubmitWork(ctx context.Context, taskSlug string, vol
 
 func (s *SubmissionService) GetSubmissions(ctx context.Context, volunteerID int64) ([]volunteer.TaskSubmission, error) {
 	return s.submissionRepo.GetByVolunteerID(ctx, volunteerID)
-}
-
-func (s *SubmissionService) ReviewSubmission(ctx context.Context, submissionID int64, status string) error {
-	return s.submissionRepo.UpdateStatus(ctx, submissionID, status)
 }

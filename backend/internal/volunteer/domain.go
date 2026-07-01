@@ -85,11 +85,3 @@ type PaymentRepository interface {
 	GetByVolunteerID(ctx context.Context, volunteerID int64) ([]Payment, error)
 	UpdateStatus(ctx context.Context, id int64, status, txHash string) error
 }
-
-type Service interface {
-	GetProfile(ctx context.Context, userID int64) (*VolunteerProfile, error)
-	UpdateProfile(ctx context.Context, userID int64, req *VolunteerProfile) error
-	ApplyForTask(ctx context.Context, taskSlug string, volunteerID int64, message string) (*TaskApplication, error)
-	SubmitWork(ctx context.Context, taskSlug string, volunteerID int64, description string, evidenceURLs []string) (*TaskSubmission, error)
-	GetPayments(ctx context.Context, volunteerID int64) ([]Payment, error)
-}

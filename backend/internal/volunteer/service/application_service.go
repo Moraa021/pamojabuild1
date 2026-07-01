@@ -41,7 +41,3 @@ func (s *ApplicationService) ApplyForTask(ctx context.Context, taskSlug string, 
 func (s *ApplicationService) GetApplications(ctx context.Context, volunteerID int64) ([]volunteer.TaskApplication, error) {
 	return s.applicationRepo.GetByVolunteerID(ctx, volunteerID)
 }
-
-func (s *ApplicationService) ReviewApplication(ctx context.Context, applicationID int64, status string) error {
-	return s.applicationRepo.UpdateStatus(ctx, applicationID, status)
-}
