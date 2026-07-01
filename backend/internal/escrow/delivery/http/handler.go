@@ -16,6 +16,17 @@ func NewEscrowHandler(service escrow.PayoutOrchestrator) *EscrowHandler {
 	return &EscrowHandler{service: service}
 }
 
+// GetPayoutReviewManifest godoc
+// @Summary      Get payout review manifest
+// @Description  Retrieve an escrow payout review manifest for a trustee to inspect.
+// @Tags         Escrow
+// @Produce      json
+// @Param        slug                path      string  true  "Task slug"
+// @Param        destination_address query     string  false "Payment destination address"
+// @Param        volunteer_invoice   query     string  false "Volunteer invoice reference"
+// @Success      200                 {object}  PayoutReviewResponse
+// @Failure      500                 {object}  map[string]string
+// @Router       /api/v1/trustees/payouts/{slug} [get]
 func (h *EscrowHandler) GetPayoutReviewManifest(c *gin.Context) {
 	taskSlug := c.Param("slug")
 
@@ -43,6 +54,18 @@ func (h *EscrowHandler) GetPayoutReviewManifest(c *gin.Context) {
 	})
 }
 
+// SubmitCoSignatures godoc
+// @Summary      Submit trustee co-signatures
+// @Description  Submit trustee signature fragments for a task payout.
+// @Tags         Escrow
+// @Accept       json
+// @Produce      json
+// @Param        slug  path  string             true  "Task slug"
+// @Param        body  body  CoSignPayoutRequest  true  "Co-signature payload"
+// @Success      200   {object}  map[string]interface{}
+// @Failure      400   {object}  map[string]string
+// @Failure      500   {object}  map[string]string
+// @Router       /api/v1/trustees/payouts/{slug}/sign [post]
 func (h *EscrowHandler) SubmitCoSignatures(c *gin.Context) {
 	taskSlug := c.Param("slug")
 
@@ -53,8 +76,8 @@ func (h *EscrowHandler) SubmitCoSignatures(c *gin.Context) {
 	}
 
 	payload := &escrow.SignatureCollection{
-		TrusteePublicKeyHex:   req.TrusteePublicKeyHex,
-		L1SignatureFragment:   req.Layer1PsbtSignatureFragment,
+		TrusteePublicKeyHex:  req.TrusteePublicKeyHex,
+		L1SignatureFragment:  req.Layer1PsbtSignatureFragment,
 		L2WebCryptoSignature: req.Layer2WebCryptoSignature,
 	}
 
@@ -64,15 +87,9 @@ func (h *EscrowHandler) SubmitCoSignatures(c *gin.Context) {
 		return
 	}
 
-	if thresholdReached {
-		if err := h.service.FinalizeAndBroadcastPayout(c.Request.Context(), taskSlug); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
-		}
-	}
-
+	// Payout finalization is driven by event subscribers on threshold reached.
 	c.JSON(http.StatusOK, gin.H{
 		"threshold_reached": thresholdReached,
-		"message":          "Signature submitted",
+		"message":           "Signature submitted",
 	})
 }

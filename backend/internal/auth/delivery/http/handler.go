@@ -16,6 +16,17 @@ func NewAuthHandler(service auth.Service) *AuthHandler {
 	return &AuthHandler{service: service}
 }
 
+// Register godoc
+// @Summary      Register a new user
+// @Description  Create a new user account and return an authentication token.
+// @Tags         Auth
+// @Accept       json
+// @Produce      json
+// @Param        body  body      RegisterRequest  true  "Registration payload"
+// @Success      201   {object}  AuthResponse
+// @Failure      400   {object}  ErrorResponse
+// @Failure      409   {object}  ErrorResponse
+// @Router       /api/v1/auth/register [post]
 func (h *AuthHandler) Register(c *gin.Context) {
 	var req RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -37,6 +48,17 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	})
 }
 
+// SignIn godoc
+// @Summary      Sign in a user
+// @Description  Authenticate with email and password to receive a JWT token.
+// @Tags         Auth
+// @Accept       json
+// @Produce      json
+// @Param        body  body      SignInRequest  true  "Sign in payload"
+// @Success      200   {object}  AuthResponse
+// @Failure      400   {object}  ErrorResponse
+// @Failure      401   {object}  ErrorResponse
+// @Router       /api/v1/auth/signin [post]
 func (h *AuthHandler) SignIn(c *gin.Context) {
 	var req SignInRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -58,6 +80,13 @@ func (h *AuthHandler) SignIn(c *gin.Context) {
 	})
 }
 
+// SignOut godoc
+// @Summary      Sign out the current user
+// @Description  Invalidate the current session token or clear authentication state.
+// @Tags         Auth
+// @Produce      json
+// @Success      200  {object}  map[string]string
+// @Router       /api/v1/auth/signout [post]
 func (h *AuthHandler) SignOut(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Signed out successfully"})
 }

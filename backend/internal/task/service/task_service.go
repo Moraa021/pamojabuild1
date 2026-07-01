@@ -32,6 +32,21 @@ func (s *TaskService) CreateCampaign(ctx context.Context, t *task.Task) (*task.T
 		return nil, err
 	}
 
+	// Publish TaskCreated event for Phase 4 event-driven flows
+	if s.eventBus != nil {
+		s.eventBus.Publish(events.Event{
+			Type: events.TaskCreated,
+			Payload: events.TaskCreatedPayload{
+				TaskSlug:      t.Slug,
+				CreatorUserID: t.CreatorID,
+				Title:         t.Title,
+				Category:      t.Category,
+				Region:        t.Region,
+				GoalSats:      t.GoalSats,
+			},
+		})
+	}
+
 	return t, nil
 }
 

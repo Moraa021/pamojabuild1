@@ -1,4 +1,4 @@
-CREATE TABLE volunteer_profiles (
+CREATE TABLE IF NOT EXISTS volunteer_profiles (
     user_id INTEGER PRIMARY KEY REFERENCES users(id),
     bio TEXT,
     skills TEXT DEFAULT '[]',

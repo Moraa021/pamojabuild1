@@ -1,5 +1,7 @@
 To maintain strict domain boundaries where no module touches another module's database tables, the application will be separated into five distinct, decoupled packages. Communication between these packages will be driven via standard interfaces and decoupled event/service calls.
 
+For event-driven behavior, see `docs/events.md` for event topics and payload definitions.
+
 ---
 
 ### Package 1: `task` (Campaign & Volunteer Social Logic)

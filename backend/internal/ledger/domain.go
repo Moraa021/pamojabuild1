@@ -29,7 +29,7 @@ type Repository interface {
 
 type SecurityService interface {
 	CalculateRowHMAC(entry *LedgerEntry, previousHash []byte, serverSecret string) ([]byte, error)
-	VerifyEntireChainIntegrity(ctx context.Context, taskSlug string, serverSecret string) (bool, error)
+	VerifyEntireChainIntegrity(ctx context.Context, taskSlug string) (bool, error)
 	RecordValidatedTransaction(ctx context.Context, taskSlug string, entryType string, amountSats int64, refID string) error
 	GetTaskBalance(ctx context.Context, taskSlug string) (*BalanceSummary, error)
 }

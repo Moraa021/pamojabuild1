@@ -1,4 +1,4 @@
-CREATE TABLE volunteer_payments (
+CREATE TABLE IF NOT EXISTS volunteer_payments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     task_slug VARCHAR(255) REFERENCES tasks(slug),
     volunteer_id INTEGER REFERENCES users(id),
@@ -9,7 +9,7 @@ CREATE TABLE volunteer_payments (
     paid_at TIMESTAMP
 );
 
-CREATE TABLE lightning_invoices (
+CREATE TABLE IF NOT EXISTS lightning_invoices (
     payment_request TEXT NOT NULL,
     payment_hash VARCHAR(255) PRIMARY KEY,
     amount_sats INTEGER NOT NULL,
@@ -18,7 +18,7 @@ CREATE TABLE lightning_invoices (
     settled_at TIMESTAMP
 );
 
-CREATE TABLE payout_signatures (
+CREATE TABLE IF NOT EXISTS payout_signatures (
     task_slug VARCHAR(255) REFERENCES tasks(slug),
     trustee_public_key_hex VARCHAR(512) NOT NULL,
     l1_signature_fragment TEXT,

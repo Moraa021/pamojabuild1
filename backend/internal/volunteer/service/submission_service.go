@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"pamojabuild1/backend/internal/events"
 	"pamojabuild1/backend/internal/volunteer"
 )
 
@@ -14,15 +15,18 @@ var (
 type SubmissionService struct {
 	submissionRepo  volunteer.SubmissionRepository
 	applicationRepo volunteer.ApplicationRepository
+	eventBus        *events.EventBus
 }
 
 func NewSubmissionService(
 	submissionRepo volunteer.SubmissionRepository,
 	applicationRepo volunteer.ApplicationRepository,
+	eventBus *events.EventBus,
 ) *SubmissionService {
 	return &SubmissionService{
 		submissionRepo:  submissionRepo,
 		applicationRepo: applicationRepo,
+		eventBus:        eventBus,
 	}
 }
 
@@ -41,6 +45,17 @@ func (s *SubmissionService) SubmitWork(ctx context.Context, taskSlug string, vol
 
 	if err := s.submissionRepo.CreateSubmission(ctx, sub); err != nil {
 		return nil, err
+	}
+
+	if s.eventBus != nil {
+		s.eventBus.Publish(events.Event{
+			Type: events.SubmissionCreated,
+			Payload: events.SubmissionCreatedPayload{
+				TaskSlug:    taskSlug,
+				VolunteerID: volunteerID,
+				Description: description,
+			},
+		})
 	}
 
 	return sub, nil

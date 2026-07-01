@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"sync"
 
 	"pamojabuild1/backend/internal/ledger"
 )
@@ -17,6 +18,7 @@ var (
 type LedgerService struct {
 	repo         ledger.Repository
 	serverSecret string
+	mu           sync.Mutex
 }
 
 func NewLedgerService(repo ledger.Repository, serverSecret string) *LedgerService {
@@ -36,19 +38,19 @@ func (s *LedgerService) CalculateRowHMAC(entry *ledger.LedgerEntry, previousHash
 	return mac.Sum(nil), nil
 }
 
-func (s *LedgerService) VerifyEntireChainIntegrity(ctx context.Context, taskSlug string, serverSecret string) (bool, error) {
-	entries, err := s.repo.GetAllEntries(ctx, taskSlug)
-	if err != nil {
-		return false, err
-	}
+func (s *LedgerService) VerifyEntireChainIntegrity(ctx context.Context, taskSlug string) (bool, error) {
+    entries, err := s.repo.GetAllEntries(ctx, taskSlug)
+    if err != nil {
+        return false, err
+    }
 
-	if len(entries) == 0 {
-		return true, nil
-	}
+    if len(entries) == 0 {
+        return true, nil
+    }
 
-	var previousHash []byte
-	for _, entry := range entries {
-		expectedHMAC, err := s.CalculateRowHMAC(&entry, previousHash, serverSecret)
+    var previousHash []byte
+    for _, entry := range entries {
+        expectedHMAC, err := s.CalculateRowHMAC(&entry, previousHash, s.serverSecret)
 		if err != nil {
 			return false, err
 		}
@@ -64,6 +66,9 @@ func (s *LedgerService) VerifyEntireChainIntegrity(ctx context.Context, taskSlug
 }
 
 func (s *LedgerService) RecordValidatedTransaction(ctx context.Context, taskSlug string, entryType string, amountSats int64, refID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	lastEntry, err := s.repo.GetLastEntry(ctx, taskSlug)
 	if err != nil && err.Error() != "sql: no rows in result set" {
 		return err

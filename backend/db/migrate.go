@@ -32,8 +32,21 @@ func RunMigrations(db *sql.DB, migrationsPath string) error {
 		}
 
 		log.Printf("Running migration: %s", fileName)
-		if _, err := db.Exec(string(content)); err != nil {
+		tx, err := db.Begin()
+		if err != nil {
+			return fmt.Errorf("failed to begin transaction for migration %s: %w", fileName, err)
+		}
+
+		if _, err := tx.Exec(string(content)); err != nil {
+			rollbackErr := tx.Rollback()
+			if rollbackErr != nil {
+				log.Printf("rollback failed after migration error: %v", rollbackErr)
+			}
 			return fmt.Errorf("failed to execute migration %s: %w", fileName, err)
+		}
+
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("failed to commit migration %s: %w", fileName, err)
 		}
 	}
 

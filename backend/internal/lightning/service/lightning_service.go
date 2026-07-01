@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"pamojabuild1/backend/internal/config"
+	"pamojabuild1/backend/internal/events"
 	"pamojabuild1/backend/internal/lightning"
 )
 
@@ -15,12 +16,13 @@ var (
 )
 
 type LightningService struct {
-	repo lightning.Client
-	cfg  *config.Config
+	repo     lightning.Client
+	cfg      *config.Config
+	eventBus *events.EventBus
 }
 
-func NewLightningService(repo lightning.Client, cfg *config.Config) *LightningService {
-	return &LightningService{repo: repo, cfg: cfg}
+func NewLightningService(repo lightning.Client, cfg *config.Config, eventBus *events.EventBus) *LightningService {
+	return &LightningService{repo: repo, cfg: cfg, eventBus: eventBus}
 }
 
 func (s *LightningService) RequestDonationInvoice(ctx context.Context, taskSlug string, amountSats int64) (*lightning.Invoice, error) {
@@ -57,5 +59,20 @@ func (s *LightningService) ProcessIncomingSettlement(ctx context.Context, invoic
 	invoice.Settled = true
 	invoice.SettledAt = time.Now()
 
-	return s.repo.UpdateSettlement(ctx, invoice.PaymentHash, invoice.SettledAt)
+	if err := s.repo.UpdateSettlement(ctx, invoice.PaymentHash, invoice.SettledAt); err != nil {
+		return err
+	}
+
+	if s.eventBus != nil {
+		s.eventBus.Publish(events.Event{
+			Type: events.PaymentSettled,
+			Payload: events.PaymentSettledPayload{
+				TaskSlug:    invoice.TaskSlug,
+				AmountSats:  invoice.AmountSats,
+				PaymentHash: invoice.PaymentHash,
+			},
+		})
+	}
+
+	return nil
 }

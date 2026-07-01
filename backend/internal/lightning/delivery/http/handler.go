@@ -16,6 +16,18 @@ func NewLightningHandler(service lightning.Service) *LightningHandler {
 	return &LightningHandler{service: service}
 }
 
+// RequestDonationInvoice godoc
+// @Summary      Request a donation invoice
+// @Description  Create a Lightning invoice for a task donation.
+// @Tags         Lightning
+// @Accept       json
+// @Produce      json
+// @Param        slug  path      string           true  "Task slug"
+// @Param        body  body      DonationRequest  true  "Donation request payload"
+// @Success      201   {object}  DonationInvoiceResponse
+// @Failure      400   {object}  map[string]string
+// @Failure      500   {object}  map[string]string
+// @Router       /api/v1/tasks/{slug}/donate [post]
 func (h *LightningHandler) RequestDonationInvoice(c *gin.Context) {
 	taskSlug := c.Param("slug")
 
@@ -38,9 +50,17 @@ func (h *LightningHandler) RequestDonationInvoice(c *gin.Context) {
 	})
 }
 
+// CheckInvoiceStatus godoc
+// @Summary      Check Lightning invoice status
+// @Description  Check the settlement status of a Lightning payment hash.
+// @Tags         Lightning
+// @Produce      json
+// @Param        payment_hash  query  string  true  "Payment hash"
+// @Success      200           {object}  map[string]interface{}
+// @Router       /api/v1/lightning/invoices/status [get]
 func (h *LightningHandler) CheckInvoiceStatus(c *gin.Context) {
 	paymentHash := c.Query("payment_hash")
-	
+
 	// This would need a GetByPaymentHash method on the service
 	// For now, return a placeholder
 	c.JSON(http.StatusOK, gin.H{

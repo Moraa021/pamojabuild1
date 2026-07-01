@@ -1,4 +1,4 @@
-CREATE TABLE trustee_keys (
+CREATE TABLE IF NOT EXISTS trustee_keys (
     task_slug VARCHAR(255) REFERENCES tasks(slug),
     trustee_index INTEGER NOT NULL,
     user_id INTEGER REFERENCES users(id),

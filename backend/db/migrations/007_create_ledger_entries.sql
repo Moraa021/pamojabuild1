@@ -1,4 +1,4 @@
-CREATE TABLE ledger_entries (
+CREATE TABLE IF NOT EXISTS ledger_entries (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     task_slug VARCHAR(255) REFERENCES tasks(slug),
     entry_type VARCHAR(50) NOT NULL,

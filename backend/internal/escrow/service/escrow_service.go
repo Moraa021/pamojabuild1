@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"pamojabuild1/backend/internal/escrow"
+	"pamojabuild1/backend/internal/events"
 	"pamojabuild1/backend/internal/ledger"
 	"pamojabuild1/backend/internal/trustee"
 )
@@ -18,13 +19,15 @@ type EscrowService struct {
 	repo        escrow.SignatureRepository
 	trusteeRepo trustee.KeyRepository
 	ledgerRepo  ledger.Repository
+	eventBus    *events.EventBus
 }
 
-func NewEscrowService(repo escrow.SignatureRepository, trusteeRepo trustee.KeyRepository, ledgerRepo ledger.Repository) *EscrowService {
+func NewEscrowService(repo escrow.SignatureRepository, trusteeRepo trustee.KeyRepository, ledgerRepo ledger.Repository, eventBus *events.EventBus) *EscrowService {
 	return &EscrowService{
 		repo:        repo,
 		trusteeRepo: trusteeRepo,
 		ledgerRepo:  ledgerRepo,
+		eventBus:    eventBus,
 	}
 }
 
@@ -73,8 +76,19 @@ func (s *EscrowService) SubmitTrusteeSignature(ctx context.Context, taskSlug str
 		return false, err
 	}
 
-	// Check if we've reached 3/5 threshold
-	return count >= 3, nil
+	thresholdReached := count >= 3
+	if thresholdReached && s.eventBus != nil {
+		s.eventBus.Publish(events.Event{
+			Type: events.ThresholdReached,
+			Payload: events.ThresholdReachedPayload{
+				TaskSlug:     taskSlug,
+				RequiredSigs: 3,
+				Signatures:   count,
+			},
+		})
+	}
+
+	return thresholdReached, nil
 }
 
 func (s *EscrowService) FinalizeAndBroadcastPayout(ctx context.Context, taskSlug string) error {

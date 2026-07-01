@@ -5,47 +5,108 @@ import "time"
 type EventType string
 
 const (
-	PaymentSettled      EventType = "payment.settled"
-	ThresholdReached    EventType = "escrow.threshold_reached"
-	PayoutFinalized     EventType = "escrow.payout_finalized"
-	VolunteerVerified   EventType = "volunteer.verified"
-	TaskStatusChanged   EventType = "task.status_changed"
-	FinancialStateChanged EventType = "task.financial_state_changed"
+    // Phase 4 event topics
+    TaskCreated          EventType = "task.created"
+    DonationReceived     EventType = "donation.received"
+    ThresholdReached     EventType = "threshold.reached"
+    TaskLiquidating      EventType = "task.liquidating"
+    TaskReadyForPayout   EventType = "task.ready_for_payout"
+    TrusteeSigned        EventType = "trustee.signed"
+    PayoutCompleted      EventType = "payout.completed"
+    TaskArchived         EventType = "task.archived"
+    VolunteerVerified    EventType = "volunteer.verified"
+    ApplicationSubmitted EventType = "application.submitted"
+    SubmissionCreated    EventType = "submission.created"
+
+    // Internal operational events
+    PaymentSettled        EventType = "payment.settled"
+    FinancialStateChanged EventType = "financial.state_changed"
+    TaskStatusChanged     EventType = "task.status.changed"
 )
 
 type Event struct {
-	Type      EventType
-	Payload   interface{}
-	Timestamp time.Time
+    Type      EventType
+    Payload   interface{}
+    Timestamp time.Time
 }
 
-type PaymentSettledPayload struct {
-	TaskSlug    string
-	AmountSats  int64
-	PaymentHash string
+// Payload types for event bus subscribers.
+
+type TaskCreatedPayload struct {
+    TaskSlug      string
+    CreatorUserID int64
+    Title         string
+    Category      string
+    Region        string
+    GoalSats      int64
+}
+
+type DonationReceivedPayload struct {
+    TaskSlug   string
+    AmountSats int64
+    DonorID    int64
+    Source     string
 }
 
 type ThresholdReachedPayload struct {
-	TaskSlug       string
-	Signatures     int
-	RequiredSigs   int
+    TaskSlug     string
+    RequiredSigs int
+    Signatures   int
 }
 
-type PayoutFinalizedPayload struct {
-	TaskSlug      string
-	L1TxID        string
-	L2PaymentHash string
-	TotalPaidSats int64
+type TaskLiquidatingPayload struct {
+    TaskSlug string
+    Reason   string
 }
 
-type TaskStatusChangedPayload struct {
-	TaskSlug   string
-	OldStatus  string
-	NewStatus  string
+type TaskReadyForPayoutPayload struct {
+    TaskSlug    string
+    AmountSats  int64
+    PayoutData  string
+}
+
+type TrusteeSignedPayload struct {
+    TaskSlug            string
+    TrusteePublicKeyHex string
+    SignatureFragment   string
+}
+
+type PayoutCompletedPayload struct {
+    TaskSlug      string
+    L1TxID        string
+    L2PaymentHash string
+    TotalPaidSats int64
+}
+
+type TaskArchivedPayload struct {
+    TaskSlug string
+    Reason   string
+}
+
+type ApplicationSubmittedPayload struct {
+    TaskSlug    string
+    VolunteerID int64
+}
+
+type SubmissionCreatedPayload struct {
+    TaskSlug    string
+    VolunteerID int64
+    Description string
+}
+
+type PaymentSettledPayload struct {
+    TaskSlug    string
+    AmountSats  int64
+    PaymentHash string
 }
 
 type FinancialStateChangedPayload struct {
-	TaskSlug    string
-	OldState    string
-	NewState    string
+    TaskSlug string
+    OldState string
+    NewState string
+}
+
+type TaskStatusChangedPayload struct {
+    TaskSlug  string
+    NewStatus string
 }
