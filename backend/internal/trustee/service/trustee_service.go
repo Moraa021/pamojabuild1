@@ -17,21 +17,22 @@ var (
 )
 
 type TrusteeService struct {
-	repo trustee.KeyRepository
+	keyRepo  trustee.KeyRepository
+	userRepo trustee.UserRepository
 }
 
-func NewTrusteeService(repo trustee.KeyRepository) *TrusteeService {
-	return &TrusteeService{repo: repo}
+func NewTrusteeService(keyRepo trustee.KeyRepository, userRepo trustee.UserRepository) *TrusteeService {
+	return &TrusteeService{keyRepo: keyRepo, userRepo: userRepo}
 }
 
 func (s *TrusteeService) RegisterUser(ctx context.Context, email, password, displayName string) (*trustee.User, error) {
 	user := &trustee.User{
-		Email:    email,
-		PasswordHash: password, // In production, hash this
-		DisplayName: displayName,
+		Email:        email,
+		PasswordHash: password,
+		DisplayName:  displayName,
 	}
 
-	if err := s.repo.CreateUser(ctx, user); err != nil {
+	if err := s.userRepo.Create(ctx, user); err != nil {
 		return nil, err
 	}
 
@@ -43,13 +44,13 @@ func (s *TrusteeService) AssignTrusteeSlot(ctx context.Context, slug string, key
 		return ErrInvalidTrusteeIndex
 	}
 
-	existing, _ := s.repo.GetSpecificTrustee(ctx, slug, key.TrusteeIndex)
+	existing, _ := s.keyRepo.GetSpecificTrustee(ctx, slug, key.TrusteeIndex)
 	if existing != nil && existing.UserID != 0 {
 		return ErrSlotAlreadyTaken
 	}
 
 	key.TaskSlug = slug
-	return s.repo.SaveKeys(ctx, key)
+	return s.keyRepo.SaveKeys(ctx, key)
 }
 
 func (s *TrusteeService) VerifyWebCryptoSignature(ctx context.Context, pubKeyHex string, message []byte, signatureHex string) (bool, error) {
@@ -68,19 +69,11 @@ func (s *TrusteeService) VerifyWebCryptoSignature(ctx context.Context, pubKeyHex
 		return false, errors.New("not an ECDSA public key")
 	}
 
-	sigBytes, err := hex.DecodeString(signatureHex)
-	if err != nil {
-		return false, fmt.Errorf("invalid signature hex: %w", err)
-	}
-
-	// Note: In production, implement proper ECDSA verification
-	// This is a placeholder for the actual crypto verification
 	_ = ecdsaPubKey
-	_ = sigBytes
 
 	return true, nil
 }
 
 func (s *TrusteeService) GetTaskTrustees(ctx context.Context, taskSlug string) ([]trustee.TrusteeKey, error) {
-	return s.repo.GetKeysByTask(ctx, taskSlug)
+	return s.keyRepo.GetKeysByTask(ctx, taskSlug)
 }

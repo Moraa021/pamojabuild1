@@ -54,3 +54,8 @@ func (r *AuthRepository) GetByEmail(ctx context.Context, email string) (*auth.Us
 	}
 	return user, nil
 }
+func (r *AuthRepository) UpdateRole(ctx context.Context, userID int64, role string) error {
+	query := `UPDATE users SET role = $1, updated_at = NOW() WHERE id = $2`
+	_, err := r.db.ExecContext(ctx, query, role, userID)
+	return err
+}

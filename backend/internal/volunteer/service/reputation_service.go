@@ -28,16 +28,14 @@ func NewReputationService(
 }
 
 func (s *ReputationService) CalculateReputation(ctx context.Context, userID int64) (*volunteer.ReputationResponse, error) {
-	profile, err := s.profileRepo.GetProfileByUserID(ctx, userID)
+	profile, err := s.profileRepo.GetByUserID(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
 
 	applications, _ := s.applicationRepo.GetByVolunteerID(ctx, userID)
 	submissions, _ := s.submissionRepo.GetByVolunteerID(ctx, userID)
-	payments, _ := s.paymentRepo.GetPaymentsByVolunteerID(ctx, userID)
 
-	// Calculate success rate
 	completedSubmissions := 0
 	for _, sub := range submissions {
 		if sub.Status == "approved" || sub.Status == "verified" {
@@ -50,7 +48,6 @@ func (s *ReputationService) CalculateReputation(ctx context.Context, userID int6
 		successRate = float64(completedSubmissions) / float64(len(applications)) * 100
 	}
 
-	// Calculate tier based on score
 	tier := calculateTier(profile.ReputationScore)
 
 	return &volunteer.ReputationResponse{

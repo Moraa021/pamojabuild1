@@ -75,7 +75,7 @@ func main() {
 	submissionSvc := volunteerService.NewSubmissionService(volunteerRepo, volunteerRepo)
 	reputationSvc := volunteerService.NewReputationService(volunteerRepo, volunteerRepo, volunteerRepo, volunteerRepo)
 	taskSvc := taskService.NewTaskService(taskRepo, eventBus)
-	trusteeSvc := trusteeService.NewTrusteeService(trusteeRepo)
+	trusteeSvc := trusteeService.NewTrusteeService(trusteeRepo, trusteeRepo)
 	lightningSvc := lightningService.NewLightningService(lightningRepo, cfg)
 	ledgerSvc := ledgerService.NewLedgerService(ledgerRepo, cfg.ServerSecret)
 	escrowSvc := escrowService.NewEscrowService(escrowRepo, trusteeRepo, ledgerRepo)

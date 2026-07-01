@@ -7,6 +7,8 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 	"github.com/golang-jwt/jwt/v5"
+
+	"pamojabuild1/backend/internal/auth"
 )
 
 var (
@@ -39,7 +41,7 @@ func (s *AuthService) Register(ctx context.Context, email, password, displayName
 		Email:        email,
 		PasswordHash: string(hashedPassword),
 		DisplayName:  displayName,
-		Role:         "volunteer", // default role
+		Role:         "volunteer",
 	}
 
 	if err := s.repo.Create(ctx, user); err != nil {
@@ -70,6 +72,10 @@ func (s *AuthService) SignIn(ctx context.Context, email, password string) (*auth
 	}
 
 	return user, token, nil
+}
+
+func (s *AuthService) SignOut(ctx context.Context, token string) error {
+	return nil
 }
 
 func (s *AuthService) generateToken(user *auth.User) (string, error) {
