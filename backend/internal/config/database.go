@@ -7,22 +7,25 @@ import (
 	"time"
 
 	_ "github.com/lib/pq"
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 )
 
 func NewDatabase(databaseURL string) (*sql.DB, error) {
 	driver := "postgres"
-	if len(databaseURL) > 7 && databaseURL[:7] == "sqlite:" {
-		driver = "sqlite3"
+	dsn := databaseURL
+
+	if len(databaseURL) < 7 || databaseURL[:7] != "postgre" {
+		driver = "sqlite"
+		dsn = databaseURL + "?_journal_mode=WAL&_foreign_keys=on"
 	}
 
-	db, err := sql.Open(driver, databaseURL)
+	db, err := sql.Open(driver, dsn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
-	db.SetMaxOpenConns(25)
-	db.SetMaxIdleConns(5)
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
 	db.SetConnMaxLifetime(5 * time.Minute)
 
 	if err := db.Ping(); err != nil {

@@ -12,13 +12,13 @@ type Config struct {
 	LNDHost       string
 	LNDMacaroon   string
 	LNDTLS        string
-	ServerSecret  string // For ledger HMAC chaining
+	ServerSecret  string
 }
 
 func Load() *Config {
 	return &Config{
 		ServerPort:    getEnv("SERVER_PORT", "8080"),
-		DatabaseURL:   getEnv("DATABASE_URL", "sqlite:./pamoja.db"),
+		DatabaseURL:   getEnv("DATABASE_URL", "/tmp/pamoja.db"),
 		JWTSecret:     getEnv("JWT_SECRET", "your-secret-key"),
 		LNDHost:       getEnv("LND_HOST", "localhost:10009"),
 		LNDMacaroon:   getEnv("LND_MACAROON", ""),
