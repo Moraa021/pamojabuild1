@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 
 	"github.com/gin-gonic/gin"
@@ -9,7 +10,6 @@ import (
 	"pamojabuild1/backend/internal/events"
 
 	// Auth
-	authDomain "pamojabuild1/backend/internal/auth"
 	authHandler "pamojabuild1/backend/internal/auth/delivery/http"
 	authRepo "pamojabuild1/backend/internal/auth/repository"
 	authService "pamojabuild1/backend/internal/auth/service"
@@ -19,23 +19,27 @@ import (
 	volunteerRepo "pamojabuild1/backend/internal/volunteer/repository"
 	volunteerService "pamojabuild1/backend/internal/volunteer/service"
 
-	// Existing packages
+	// Escrow
 	escrowHandler "pamojabuild1/backend/internal/escrow/delivery/http"
 	escrowRepo "pamojabuild1/backend/internal/escrow/repository"
 	escrowService "pamojabuild1/backend/internal/escrow/service"
 
+	// Ledger
 	ledgerHandler "pamojabuild1/backend/internal/ledger/delivery/http"
 	ledgerRepo "pamojabuild1/backend/internal/ledger/repository"
 	ledgerService "pamojabuild1/backend/internal/ledger/service"
 
+	// Lightning
 	lightningHandler "pamojabuild1/backend/internal/lightning/delivery/http"
 	lightningRepo "pamojabuild1/backend/internal/lightning/repository"
 	lightningService "pamojabuild1/backend/internal/lightning/service"
 
+	// Task
 	taskHandler "pamojabuild1/backend/internal/task/delivery/http"
 	taskRepo "pamojabuild1/backend/internal/task/repository"
 	taskService "pamojabuild1/backend/internal/task/service"
 
+	// Trustee
 	trusteeHandler "pamojabuild1/backend/internal/trustee/delivery/http"
 	trusteeRepo "pamojabuild1/backend/internal/trustee/repository"
 	trusteeService "pamojabuild1/backend/internal/trustee/service"
@@ -87,35 +91,77 @@ func main() {
 
 	// Subscribe to events
 	eventBus.Subscribe(events.PaymentSettled, func(event events.Event) {
-		// Handle payment settlement
-		payload := event.Payload.(events.PaymentSettledPayload)
-		ledgerSvc.RecordValidatedTransaction(nil, payload.TaskSlug, "INBOUND_DONATION", payload.AmountSats, payload.PaymentHash)
+		payload, ok := event.Payload.(events.PaymentSettledPayload)
+		if !ok {
+			log.Println("Invalid payload type for PaymentSettled event")
+			return
+		}
+		ctx := context.Background()
+		if err := ledgerSvc.RecordValidatedTransaction(ctx, payload.TaskSlug, "INBOUND_DONATION", payload.AmountSats, payload.PaymentHash); err != nil {
+			log.Printf("Failed to record transaction: %v", err)
+		}
 	})
 
 	eventBus.Subscribe(events.ThresholdReached, func(event events.Event) {
-		// Handle multi-sig threshold
-		payload := event.Payload.(events.ThresholdReachedPayload)
-		escrowSvc.FinalizeAndBroadcastPayout(nil, payload.TaskSlug)
+		payload, ok := event.Payload.(events.ThresholdReachedPayload)
+		if !ok {
+			log.Println("Invalid payload type for ThresholdReached event")
+			return
+		}
+		ctx := context.Background()
+		if err := escrowSvc.FinalizeAndBroadcastPayout(ctx, payload.TaskSlug); err != nil {
+			log.Printf("Failed to finalize payout: %v", err)
+		}
+	})
+
+	eventBus.Subscribe(events.FinancialStateChanged, func(event events.Event) {
+		payload, ok := event.Payload.(events.FinancialStateChangedPayload)
+		if !ok {
+			log.Println("Invalid payload type for FinancialStateChanged event")
+			return
+		}
+		log.Printf("Financial state changed for %s: %s -> %s", payload.TaskSlug, payload.OldState, payload.NewState)
 	})
 
 	// Setup router
 	router := gin.Default()
 
+	// CORS middleware
+	router.Use(func(c *gin.Context) {
+		c.Header("Access-Control-Allow-Origin", "*")
+		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		c.Header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		
+		if c.Request.Method == "OPTIONS" {
+			c.AbortWithStatus(204)
+			return
+		}
+		
+		c.Next()
+	})
+
+	// Health check
+	router.GET("/health", func(c *gin.Context) {
+		c.JSON(200, gin.H{"status": "ok"})
+	})
+
 	// Public routes
 	api := router.Group("/api/v1")
 	{
-		// Auth routes
+		// Auth routes (public)
 		auth := api.Group("/auth")
 		{
 			auth.POST("/register", authH.Register)
 			auth.POST("/signin", authH.SignIn)
-			auth.POST("/signout", authH.SignOut)
 		}
 
 		// Protected routes
 		protected := api.Group("")
 		protected.Use(authHandler.AuthMiddleware(authSvc))
 		{
+			// Auth routes (protected)
+			protected.POST("/auth/signout", authH.SignOut)
+
 			// Task routes
 			tasks := protected.Group("/tasks")
 			{
