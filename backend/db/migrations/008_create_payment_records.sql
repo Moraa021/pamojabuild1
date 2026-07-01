@@ -1,8 +1,8 @@
 CREATE TABLE volunteer_payments (
-    id BIGSERIAL PRIMARY KEY,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
     task_slug VARCHAR(255) REFERENCES tasks(slug),
-    volunteer_id BIGINT REFERENCES users(id),
-    amount_sats BIGINT NOT NULL,
+    volunteer_id INTEGER REFERENCES users(id),
+    amount_sats INTEGER NOT NULL,
     payment_method VARCHAR(50),
     status VARCHAR(50) DEFAULT 'pending',
     transaction_hash VARCHAR(255),
@@ -12,9 +12,9 @@ CREATE TABLE volunteer_payments (
 CREATE TABLE lightning_invoices (
     payment_request TEXT NOT NULL,
     payment_hash VARCHAR(255) PRIMARY KEY,
-    amount_sats BIGINT NOT NULL,
+    amount_sats INTEGER NOT NULL,
     task_slug VARCHAR(255) REFERENCES tasks(slug),
-    settled BOOLEAN DEFAULT FALSE,
+    settled INTEGER DEFAULT 0,
     settled_at TIMESTAMP
 );
 

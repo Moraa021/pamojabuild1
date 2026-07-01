@@ -17,6 +17,23 @@ func NewVolunteerRepository(db *sql.DB) *VolunteerRepository {
 	return &VolunteerRepository{db: db}
 }
 
+// Constructor wrappers to satisfy different repository interfaces expected by callers
+func NewProfileRepository(db *sql.DB) volunteer.ProfileRepository {
+	return NewVolunteerRepository(db)
+}
+
+func NewApplicationRepository(db *sql.DB) volunteer.ApplicationRepository {
+	return NewVolunteerRepository(db)
+}
+
+func NewSubmissionRepository(db *sql.DB) volunteer.SubmissionRepository {
+	return NewVolunteerRepository(db)
+}
+
+func NewPaymentRepository(db *sql.DB) volunteer.PaymentRepository {
+	return NewVolunteerRepository(db)
+}
+
 // ProfileRepository methods
 func (r *VolunteerRepository) Create(ctx context.Context, profile *volunteer.VolunteerProfile) error {
 	skillsJSON, _ := json.Marshal(profile.Skills)
