@@ -33,4 +33,5 @@ type Service interface {
 	RegisterUser(ctx context.Context, email, password, displayName string) (*User, error)
 	AssignTrusteeSlot(ctx context.Context, slug string, key *TrusteeKey) error
 	VerifyWebCryptoSignature(ctx context.Context, pubKeyHex string, message []byte, signatureHex string) (bool, error)
+	GetTaskTrustees(ctx context.Context, taskSlug string) ([]TrusteeKey, error)
 }

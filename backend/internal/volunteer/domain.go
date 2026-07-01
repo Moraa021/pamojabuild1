@@ -24,7 +24,7 @@ type TaskApplication struct {
 	TaskSlug    string
 	VolunteerID int64
 	Message     string
-	Status      string // "pending", "approved", "rejected"
+	Status      string
 	AppliedAt   time.Time
 	ReviewedAt  *time.Time
 }
@@ -45,10 +45,19 @@ type Payment struct {
 	TaskSlug        string
 	VolunteerID     int64
 	AmountSats      int64
-	PaymentMethod   string // "lightning", "onchain"
+	PaymentMethod   string
 	Status          string
 	TransactionHash string
 	PaidAt          *time.Time
+}
+
+type ReputationResponse struct {
+	UserID          int64   `json:"user_id"`
+	Score           int     `json:"score"`
+	Tier            string  `json:"tier"`
+	CompletedTasks  int     `json:"completed_tasks"`
+	TotalEarnedSats int64   `json:"total_earned_sats"`
+	SuccessRate     float64 `json:"success_rate"`
 }
 
 type ProfileRepository interface {
@@ -68,6 +77,7 @@ type SubmissionRepository interface {
 	Create(ctx context.Context, sub *TaskSubmission) error
 	GetByVolunteerID(ctx context.Context, volunteerID int64) ([]TaskSubmission, error)
 	GetByTaskSlug(ctx context.Context, taskSlug string, volunteerID int64) (*TaskSubmission, error)
+	UpdateStatus(ctx context.Context, id int64, status string) error
 }
 
 type PaymentRepository interface {
@@ -82,5 +92,4 @@ type Service interface {
 	ApplyForTask(ctx context.Context, taskSlug string, volunteerID int64, message string) (*TaskApplication, error)
 	SubmitWork(ctx context.Context, taskSlug string, volunteerID int64, description string, evidenceURLs []string) (*TaskSubmission, error)
 	GetPayments(ctx context.Context, volunteerID int64) ([]Payment, error)
-	GetReputation(ctx context.Context, userID int64) (*ReputationResponse, error)
 }

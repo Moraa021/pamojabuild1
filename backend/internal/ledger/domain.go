@@ -5,9 +5,9 @@ import "context"
 type LedgerEntry struct {
 	ID           int64
 	TaskSlug     string
-	EntryType    string // "INBOUND_DONATION", "SUBMARINE_SWAP", "TAIL_PAYOUT"
+	EntryType    string
 	AmountSats   int64
-	ReferenceID  string // LND payment hash or L1 TxID
+	ReferenceID  string
 	PreviousHash []byte
 	RowHMAC      []byte
 }
@@ -21,6 +21,7 @@ type BalanceSummary struct {
 type Repository interface {
 	GetLastEntry(ctx context.Context, taskSlug string) (*LedgerEntry, error)
 	AppendEntry(ctx context.Context, entry *LedgerEntry) error
+	GetAllEntries(ctx context.Context, taskSlug string) ([]LedgerEntry, error)
 	GetTaskBalance(ctx context.Context, taskSlug string) (*BalanceSummary, error)
 	UpdateBalances(ctx context.Context, taskSlug string, l2Delta, l1Delta int64) error
 	IncrementDerivationIndex(ctx context.Context, taskSlug string) error
@@ -30,4 +31,5 @@ type SecurityService interface {
 	CalculateRowHMAC(entry *LedgerEntry, previousHash []byte, serverSecret string) ([]byte, error)
 	VerifyEntireChainIntegrity(ctx context.Context, taskSlug string, serverSecret string) (bool, error)
 	RecordValidatedTransaction(ctx context.Context, taskSlug string, entryType string, amountSats int64, refID string) error
+	GetTaskBalance(ctx context.Context, taskSlug string) (*BalanceSummary, error)
 }

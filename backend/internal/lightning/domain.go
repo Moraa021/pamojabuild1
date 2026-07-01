@@ -17,6 +17,9 @@ type Invoice struct {
 type Client interface {
 	GenerateBolt11Invoice(ctx context.Context, taskSlug string, amountSats int64) (*Invoice, error)
 	SubscribeInvoiceSettlements(ctx context.Context, callback func(settledInvoice *Invoice)) error
+	SaveInvoice(ctx context.Context, invoice *Invoice) error
+	GetByPaymentHash(ctx context.Context, paymentHash string) (*Invoice, error)
+	UpdateSettlement(ctx context.Context, paymentHash string, settledAt time.Time) error
 }
 
 type Service interface {

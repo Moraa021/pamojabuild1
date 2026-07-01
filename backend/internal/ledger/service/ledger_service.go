@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 

@@ -4,6 +4,8 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+
+	"pamojabuild1/backend/internal/auth"
 )
 
 type AuthHandler struct {
@@ -54,4 +56,8 @@ func (h *AuthHandler) SignIn(c *gin.Context) {
 		Role:        user.Role,
 		DisplayName: user.DisplayName,
 	})
+}
+
+func (h *AuthHandler) SignOut(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"message": "Signed out successfully"})
 }

@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+
+	"pamojabuild1/backend/internal/auth"
 )
 
 func AuthMiddleware(authService auth.Service) gin.HandlerFunc {
@@ -31,6 +33,7 @@ func AuthMiddleware(authService auth.Service) gin.HandlerFunc {
 		}
 
 		c.Set("user", user)
+		c.Set("user_id", user.ID)
 		c.Next()
 	}
 }
