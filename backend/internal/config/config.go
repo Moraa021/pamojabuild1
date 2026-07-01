@@ -18,7 +18,7 @@ type Config struct {
 func Load() *Config {
 	return &Config{
 		ServerPort:    getEnv("SERVER_PORT", "8080"),
-		DatabaseURL:   getEnv("DATABASE_URL", "postgres://localhost:5432/pamoja?sslmode=disable"),
+		DatabaseURL:   getEnv("DATABASE_URL", "sqlite:./pamoja.db"),
 		JWTSecret:     getEnv("JWT_SECRET", "your-secret-key"),
 		LNDHost:       getEnv("LND_HOST", "localhost:10009"),
 		LNDMacaroon:   getEnv("LND_MACAROON", ""),

@@ -7,10 +7,16 @@ import (
 	"time"
 
 	_ "github.com/lib/pq"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 func NewDatabase(databaseURL string) (*sql.DB, error) {
-	db, err := sql.Open("postgres", databaseURL)
+	driver := "postgres"
+	if len(databaseURL) > 7 && databaseURL[:7] == "sqlite:" {
+		driver = "sqlite3"
+	}
+
+	db, err := sql.Open(driver, databaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
@@ -23,6 +29,6 @@ func NewDatabase(databaseURL string) (*sql.DB, error) {
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
-	log.Println("Database connection established")
+	log.Printf("Database connection established (%s)", driver)
 	return db, nil
 }
