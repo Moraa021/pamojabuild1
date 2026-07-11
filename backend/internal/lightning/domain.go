@@ -43,9 +43,11 @@ type Repository interface {
 	SaveInvoice(ctx context.Context, invoice *Invoice) error
 	GetByPaymentHash(ctx context.Context, paymentHash string) (*Invoice, error)
 	MarkSettled(ctx context.Context, paymentHash string, settledAt time.Time, settleIndex int64) (bool, error)
+	LatestSettleIndex(ctx context.Context) (int64, error)
 }
 
 type Service interface {
 	RequestDonationInvoice(ctx context.Context, taskSlug string, amountSats int64) (*Invoice, error)
 	ProcessIncomingSettlement(ctx context.Context, invoice *Invoice) error
+	StartSettlementListener(ctx context.Context)
 }

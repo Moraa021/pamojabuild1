@@ -173,11 +173,24 @@ The backend has a production-ready gRPC LND client that can create invoices and 
 
 ### Step 6: Listen for Paid Invoices
 
+Status: Done.
+
 Work:
 
 - Start a background listener when the backend starts.
 - Subscribe to invoice updates from LND.
 - When LND says an invoice is paid, call the settlement processing code.
+- Resume from the latest stored LND settlement index.
+- Keep retrying the subscription after recoverable stream errors.
+- Stop the listener through the same shutdown context as the HTTP server.
+
+Result:
+
+- `LightningService.StartSettlementListener` now runs the long-lived subscription loop.
+- The repository exposes `LatestSettleIndex` so the listener can resume from database state.
+- Unknown settled invoices are ignored safely instead of killing the listener.
+- `main` now uses `http.Server` with signal-aware graceful shutdown, so the listener and HTTP server share the same lifecycle.
+- Router tests still build routers without starting a background listener; the real server path uses `NewRouterWithContext`.
 
 Success condition:
 

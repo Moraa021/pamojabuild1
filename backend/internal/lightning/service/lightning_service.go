@@ -2,9 +2,11 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -20,6 +22,7 @@ var (
 
 const defaultInvoiceExpiry = time.Hour
 const paymentHashHexLength = 64
+const settlementListenerRetryDelay = 5 * time.Second
 
 type LightningService struct {
 	repo     lightning.Repository
@@ -98,6 +101,9 @@ func (s *LightningService) ProcessIncomingSettlement(ctx context.Context, invoic
 
 	existing, err := s.repo.GetByPaymentHash(ctx, invoice.PaymentHash)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
 		return err
 	}
 
@@ -130,4 +136,59 @@ func (s *LightningService) ProcessIncomingSettlement(ctx context.Context, invoic
 	}
 
 	return nil
+}
+
+func (s *LightningService) StartSettlementListener(ctx context.Context) {
+	if s.node == nil {
+		log.Println("lightning settlement listener not started: node client is nil")
+		return
+	}
+	if s.repo == nil {
+		log.Println("lightning settlement listener not started: repository is nil")
+		return
+	}
+
+	for {
+		if err := ctx.Err(); err != nil {
+			return
+		}
+
+		// LND settlement indexes are monotonic. Reading the latest persisted
+		// value before each subscription lets the listener resume after a
+		// process restart or stream reconnect without replaying older invoices.
+		sinceSettleIndex, err := s.repo.LatestSettleIndex(ctx)
+		if err != nil {
+			log.Printf("lightning settlement listener could not load resume index: %v", err)
+			if !waitForSettlementListenerRetry(ctx) {
+				return
+			}
+			continue
+		}
+
+		err = s.node.SubscribeInvoiceSettlements(ctx, sinceSettleIndex, s.ProcessIncomingSettlement)
+		if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			if ctx.Err() != nil {
+				return
+			}
+			log.Println("lightning settlement listener ended; retrying subscription")
+		} else {
+			log.Printf("lightning settlement listener error: %v", err)
+		}
+
+		if !waitForSettlementListenerRetry(ctx) {
+			return
+		}
+	}
+}
+
+func waitForSettlementListenerRetry(ctx context.Context) bool {
+	timer := time.NewTimer(settlementListenerRetryDelay)
+	defer timer.Stop()
+
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
+	}
 }

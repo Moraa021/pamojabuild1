@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"testing"
 	"time"
@@ -16,12 +17,16 @@ type mockLightningRepo struct {
 	saveErr   error
 	getErr    error
 	updateErr error
+	latest    int64
 }
 
 type mockLightningNode struct {
-	createErr error
-	request   lightning.InvoiceRequest
-	invoice   *lightning.Invoice
+	createErr         error
+	request           lightning.InvoiceRequest
+	invoice           *lightning.Invoice
+	subscribeSince    int64
+	settlement        *lightning.Invoice
+	cancelOnSubscribe context.CancelFunc
 }
 
 const testPaymentHash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -47,6 +52,15 @@ func (m *mockLightningNode) CreateInvoice(ctx context.Context, request lightning
 }
 
 func (m *mockLightningNode) SubscribeInvoiceSettlements(ctx context.Context, sinceSettleIndex int64, handler lightning.SettlementHandler) error {
+	m.subscribeSince = sinceSettleIndex
+	if m.settlement != nil {
+		if err := handler(ctx, m.settlement); err != nil {
+			return err
+		}
+	}
+	if m.cancelOnSubscribe != nil {
+		m.cancelOnSubscribe()
+	}
 	return nil
 }
 
@@ -85,6 +99,10 @@ func (m *mockLightningRepo) MarkSettled(ctx context.Context, paymentHash string,
 	return false, errors.New("not found")
 }
 
+func (m *mockLightningRepo) LatestSettleIndex(ctx context.Context) (int64, error) {
+	return m.latest, nil
+}
+
 func TestRequestDonationInvoice(t *testing.T) {
 	repo := &mockLightningRepo{}
 	node := &mockLightningNode{}
@@ -108,6 +126,66 @@ func TestRequestDonationInvoice(t *testing.T) {
 	}
 	if node.request.Memo != "PamojaBuild donation task=task1" {
 		t.Fatalf("expected task slug in invoice memo, got %q", node.request.Memo)
+	}
+}
+
+func TestProcessIncomingSettlementIgnoresUnknownPaymentHash(t *testing.T) {
+	repo := &mockLightningRepo{getErr: sql.ErrNoRows}
+	bus := events.NewEventBus()
+	published := 0
+	bus.Subscribe(events.PaymentSettled, func(e events.Event) {
+		published++
+	})
+	svc := NewLightningService(repo, &mockLightningNode{}, &config.Config{}, bus)
+
+	err := svc.ProcessIncomingSettlement(context.Background(), &lightning.Invoice{PaymentHash: testPaymentHash})
+	if err != nil {
+		t.Fatalf("expected unknown settlement to be ignored, got %v", err)
+	}
+	if published != 0 {
+		t.Fatalf("expected no event for unknown settlement, got %d", published)
+	}
+}
+
+func TestStartSettlementListenerSubscribesFromLatestIndex(t *testing.T) {
+	repo := &mockLightningRepo{
+		invoice: &lightning.Invoice{
+			PaymentHash: testPaymentHash,
+			TaskSlug:    "task1",
+			AmountSats:  100,
+			Status:      lightning.InvoiceStatusPending,
+		},
+		latest: 12,
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	node := &mockLightningNode{
+		settlement: &lightning.Invoice{
+			PaymentHash: testPaymentHash,
+			SettledAt:   time.Now().UTC(),
+			SettleIndex: 13,
+		},
+		cancelOnSubscribe: cancel,
+	}
+	bus := events.NewEventBus()
+	published := 0
+	bus.Subscribe(events.PaymentSettled, func(e events.Event) {
+		published++
+	})
+	svc := NewLightningService(repo, node, &config.Config{}, bus)
+
+	svc.StartSettlementListener(ctx)
+
+	if node.subscribeSince != 12 {
+		t.Fatalf("expected listener to resume from settle index 12, got %d", node.subscribeSince)
+	}
+	if repo.invoice.Status != lightning.InvoiceStatusSettled {
+		t.Fatalf("expected invoice to be settled, got status %q", repo.invoice.Status)
+	}
+	if repo.invoice.SettleIndex != 13 {
+		t.Fatalf("expected settle index 13, got %d", repo.invoice.SettleIndex)
+	}
+	if published != 1 {
+		t.Fatalf("expected one settlement event, got %d", published)
 	}
 }
 

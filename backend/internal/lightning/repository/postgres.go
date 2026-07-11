@@ -86,6 +86,18 @@ func (r *LightningRepository) MarkSettled(ctx context.Context, paymentHash strin
 	return rowsAffected == 1, nil
 }
 
+func (r *LightningRepository) LatestSettleIndex(ctx context.Context) (int64, error) {
+	var latest sql.NullInt64
+	query := `SELECT MAX(settle_index) FROM lightning_invoices WHERE status = $1`
+	if err := r.db.QueryRowContext(ctx, query, lightning.InvoiceStatusSettled).Scan(&latest); err != nil {
+		return 0, err
+	}
+	if !latest.Valid {
+		return 0, nil
+	}
+	return latest.Int64, nil
+}
+
 func nullableTime(value time.Time) interface{} {
 	if value.IsZero() {
 		return nil

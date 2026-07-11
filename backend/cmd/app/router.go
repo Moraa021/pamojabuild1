@@ -44,11 +44,15 @@ import (
 )
 
 func NewRouter(db *sql.DB, cfg *config.Config) *gin.Engine {
+	return NewRouterWithContext(nil, db, cfg)
+}
+
+func NewRouterWithContext(ctx context.Context, db *sql.DB, cfg *config.Config) *gin.Engine {
 	lightningNode, err := newLightningNodeClient(cfg)
 	if err != nil {
 		panic(fmt.Sprintf("failed to configure lnd lightning client: %v", err))
 	}
-	return NewRouterWithLightningNode(db, cfg, lightningNode)
+	return newRouter(db, cfg, lightningNode, ctx)
 }
 
 func newLightningNodeClient(cfg *config.Config) (lightning.NodeClient, error) {
@@ -85,6 +89,10 @@ func newLightningRESTNodeClient(cfg *config.Config) (lightning.NodeClient, error
 }
 
 func NewRouterWithLightningNode(db *sql.DB, cfg *config.Config, lightningNode lightning.NodeClient) *gin.Engine {
+	return newRouter(db, cfg, lightningNode, nil)
+}
+
+func newRouter(db *sql.DB, cfg *config.Config, lightningNode lightning.NodeClient, listenerCtx context.Context) *gin.Engine {
 	eventBus := events.NewEventBus()
 
 	authRepo := authRepo.NewAuthRepository(db)
@@ -170,6 +178,10 @@ func NewRouterWithLightningNode(db *sql.DB, cfg *config.Config, lightningNode li
 			escrowSvc.FinalizeAndBroadcastPayout(ctx, payload.TaskSlug)
 		}
 	})
+
+	if listenerCtx != nil {
+		go lightningSvc.StartSettlementListener(listenerCtx)
+	}
 
 	router := gin.Default()
 	router.Use(middleware.ErrorHandler(), middleware.RateLimiter(), middleware.ValidationMiddleware())
