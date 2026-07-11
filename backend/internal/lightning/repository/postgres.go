@@ -12,6 +12,8 @@ type LightningRepository struct {
 	db *sql.DB
 }
 
+const settlementCursorKey = "lnd_settle_index"
+
 func NewLightningRepository(db *sql.DB) *LightningRepository {
 	return &LightningRepository{db: db}
 }
@@ -91,15 +93,51 @@ func (r *LightningRepository) MarkSettled(ctx context.Context, paymentHash strin
 }
 
 func (r *LightningRepository) LatestSettleIndex(ctx context.Context) (int64, error) {
-	var latest sql.NullInt64
+	var latestInvoiceIndex sql.NullInt64
 	query := `SELECT MAX(settle_index) FROM lightning_invoices WHERE status = $1`
-	if err := r.db.QueryRowContext(ctx, query, lightning.InvoiceStatusSettled).Scan(&latest); err != nil {
+	if err := r.db.QueryRowContext(ctx, query, lightning.InvoiceStatusSettled).Scan(&latestInvoiceIndex); err != nil {
 		return 0, err
 	}
-	if !latest.Valid {
-		return 0, nil
+
+	latestIndex := int64(0)
+	if latestInvoiceIndex.Valid {
+		latestIndex = latestInvoiceIndex.Int64
 	}
-	return latest.Int64, nil
+
+	var cursorIndex int64
+	cursorQuery := `SELECT value_integer FROM lightning_sync_state WHERE key = $1`
+	err := r.db.QueryRowContext(ctx, cursorQuery, settlementCursorKey).Scan(&cursorIndex)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return latestIndex, nil
+		}
+		return 0, err
+	}
+	if cursorIndex > latestIndex {
+		return cursorIndex, nil
+	}
+	return latestIndex, nil
+}
+
+func (r *LightningRepository) AdvanceSettlementCursor(ctx context.Context, settleIndex int64) error {
+	if settleIndex <= 0 {
+		return nil
+	}
+
+	// The cursor tracks progress through LND's global invoice stream, including
+	// settled invoices that do not belong to this app. It only moves forward so
+	// old replayed updates cannot hide newer work after restart.
+	query := `
+		INSERT INTO lightning_sync_state (key, value_integer, updated_at)
+		VALUES ($1, $2, CURRENT_TIMESTAMP)
+		ON CONFLICT(key) DO UPDATE SET
+			value_integer = CASE
+				WHEN value_integer < excluded.value_integer THEN excluded.value_integer
+				ELSE value_integer
+			END,
+			updated_at = CURRENT_TIMESTAMP`
+	_, err := r.db.ExecContext(ctx, query, settlementCursorKey, settleIndex)
+	return err
 }
 
 func (r *LightningRepository) ExpirePendingInvoices(ctx context.Context, now time.Time) (int64, error) {

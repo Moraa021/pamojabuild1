@@ -43,10 +43,10 @@ Already present:
 - The backend now listens for paid invoices and processes settlement updates.
 - Settlement handling is idempotent: duplicate paid-invoice notifications do not create duplicate ledger events.
 - Pending invoices are marked expired after their expiry time, and the status endpoint reports `expired`.
+- Restart recovery now has a durable LND settlement cursor, separate from individual invoice rows.
 
 Still missing:
 
-- Restart recovery.
 - Phase 5-specific tests for real payment success, timeout, and restart recovery.
 
 ## Implementation Steps
@@ -250,6 +250,8 @@ An unpaid invoice after its expiry time is treated as expired, not pending.
 
 ### Step 9: Add Restart Recovery
 
+Status: Done.
+
 Problem:
 
 The backend may be offline when a donor pays. When it comes back, it must catch up.
@@ -259,6 +261,15 @@ Work:
 - Store the latest LND settlement position or another reliable recovery marker.
 - On startup, ask LND for invoice updates since the last known point.
 - Process any paid invoices that were missed while the backend was offline.
+
+Result:
+
+- Added `lightning_sync_state`, a small table for durable Lightning sync cursors.
+- The repository now returns the latest known settlement position from both settled invoice rows and the durable cursor.
+- The settlement listener already subscribes to LND from that position on startup and reconnect.
+- After a settlement update is handled, the backend advances the durable LND settlement cursor.
+- Unknown settled LND invoices are ignored for accounting but still advance the cursor, so restart recovery does not replay irrelevant invoices forever.
+- Known paid invoices still go through `ProcessIncomingSettlement`, which keeps settlement idempotent and publishes `PaymentSettled` only once.
 
 Success condition:
 

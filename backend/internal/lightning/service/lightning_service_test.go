@@ -19,6 +19,7 @@ type mockLightningRepo struct {
 	updateErr error
 	expireErr error
 	latest    int64
+	cursor    int64
 }
 
 type mockLightningNode struct {
@@ -104,6 +105,13 @@ func (m *mockLightningRepo) LatestSettleIndex(ctx context.Context) (int64, error
 	return m.latest, nil
 }
 
+func (m *mockLightningRepo) AdvanceSettlementCursor(ctx context.Context, settleIndex int64) error {
+	if settleIndex > m.cursor {
+		m.cursor = settleIndex
+	}
+	return nil
+}
+
 func (m *mockLightningRepo) ExpirePendingInvoices(ctx context.Context, now time.Time) (int64, error) {
 	if m.expireErr != nil {
 		return 0, m.expireErr
@@ -173,7 +181,7 @@ func TestGetInvoiceStatusRejectsInvalidPaymentHash(t *testing.T) {
 	}
 }
 
-func TestProcessIncomingSettlementIgnoresUnknownPaymentHash(t *testing.T) {
+func TestProcessIncomingSettlementIgnoresUnknownPaymentHashAndAdvancesCursor(t *testing.T) {
 	repo := &mockLightningRepo{getErr: sql.ErrNoRows}
 	bus := events.NewEventBus()
 	published := 0
@@ -182,9 +190,15 @@ func TestProcessIncomingSettlementIgnoresUnknownPaymentHash(t *testing.T) {
 	})
 	svc := NewLightningService(repo, &mockLightningNode{}, &config.Config{}, bus)
 
-	err := svc.ProcessIncomingSettlement(context.Background(), &lightning.Invoice{PaymentHash: testPaymentHash})
+	err := svc.ProcessIncomingSettlement(context.Background(), &lightning.Invoice{
+		PaymentHash: testPaymentHash,
+		SettleIndex: 21,
+	})
 	if err != nil {
 		t.Fatalf("expected unknown settlement to be ignored, got %v", err)
+	}
+	if repo.cursor != 21 {
+		t.Fatalf("expected recovery cursor to advance to 21, got %d", repo.cursor)
 	}
 	if published != 0 {
 		t.Fatalf("expected no event for unknown settlement, got %d", published)
@@ -227,6 +241,9 @@ func TestStartSettlementListenerSubscribesFromLatestIndex(t *testing.T) {
 	}
 	if repo.invoice.SettleIndex != 13 {
 		t.Fatalf("expected settle index 13, got %d", repo.invoice.SettleIndex)
+	}
+	if repo.cursor != 13 {
+		t.Fatalf("expected recovery cursor to advance to 13, got %d", repo.cursor)
 	}
 	if published != 1 {
 		t.Fatalf("expected one settlement event, got %d", published)

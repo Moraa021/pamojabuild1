@@ -50,6 +50,7 @@ type Repository interface {
 	GetByPaymentHash(ctx context.Context, paymentHash string) (*Invoice, error)
 	MarkSettled(ctx context.Context, paymentHash string, settledAt time.Time, settleIndex int64) (bool, error)
 	LatestSettleIndex(ctx context.Context) (int64, error)
+	AdvanceSettlementCursor(ctx context.Context, settleIndex int64) error
 	ExpirePendingInvoices(ctx context.Context, now time.Time) (int64, error)
 }
 

@@ -121,7 +121,7 @@ func (s *LightningService) ProcessIncomingSettlement(ctx context.Context, invoic
 	existing, err := s.repo.GetByPaymentHash(ctx, invoice.PaymentHash)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil
+			return s.advanceSettlementCursor(ctx, invoice)
 		}
 		return err
 	}
@@ -136,7 +136,7 @@ func (s *LightningService) ProcessIncomingSettlement(ctx context.Context, invoic
 		return err
 	}
 	if !changed {
-		return nil
+		return s.advanceSettlementCursor(ctx, invoice)
 	}
 
 	if s.eventBus != nil {
@@ -150,7 +150,14 @@ func (s *LightningService) ProcessIncomingSettlement(ctx context.Context, invoic
 		})
 	}
 
-	return nil
+	return s.advanceSettlementCursor(ctx, invoice)
+}
+
+func (s *LightningService) advanceSettlementCursor(ctx context.Context, invoice *lightning.Invoice) error {
+	if invoice == nil || invoice.SettleIndex <= 0 {
+		return nil
+	}
+	return s.repo.AdvanceSettlementCursor(ctx, invoice.SettleIndex)
 }
 
 func (s *LightningService) StartSettlementListener(ctx context.Context) {
