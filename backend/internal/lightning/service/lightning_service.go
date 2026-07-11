@@ -23,6 +23,7 @@ var (
 const defaultInvoiceExpiry = time.Hour
 const paymentHashHexLength = 64
 const settlementListenerRetryDelay = 5 * time.Second
+const invoiceExpirySweepInterval = time.Minute
 
 type LightningService struct {
 	repo     lightning.Repository
@@ -94,6 +95,24 @@ func isPaymentHashHex(paymentHash string) bool {
 	return err == nil
 }
 
+func (s *LightningService) GetInvoiceStatus(ctx context.Context, paymentHash string) (*lightning.Invoice, error) {
+	if !isPaymentHashHex(paymentHash) {
+		return nil, lightning.ErrInvalidPaymentHash
+	}
+	if _, err := s.repo.ExpirePendingInvoices(ctx, time.Now().UTC()); err != nil {
+		return nil, err
+	}
+
+	invoice, err := s.repo.GetByPaymentHash(ctx, paymentHash)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, lightning.ErrInvoiceNotFound
+		}
+		return nil, err
+	}
+	return invoice, nil
+}
+
 func (s *LightningService) ProcessIncomingSettlement(ctx context.Context, invoice *lightning.Invoice) error {
 	if invoice == nil || invoice.PaymentHash == "" {
 		return errors.New("settlement invoice must include payment hash")
@@ -105,10 +124,6 @@ func (s *LightningService) ProcessIncomingSettlement(ctx context.Context, invoic
 			return nil
 		}
 		return err
-	}
-
-	if existing.Status == lightning.InvoiceStatusExpired {
-		return errors.New("cannot settle expired invoice")
 	}
 
 	settledAt := invoice.SettledAt
@@ -190,5 +205,37 @@ func waitForSettlementListenerRetry(ctx context.Context) bool {
 		return false
 	case <-timer.C:
 		return true
+	}
+}
+
+func (s *LightningService) StartInvoiceExpiryWorker(ctx context.Context) {
+	if s.repo == nil {
+		log.Println("lightning invoice expiry worker not started: repository is nil")
+		return
+	}
+
+	s.expirePendingInvoices(ctx)
+
+	ticker := time.NewTicker(invoiceExpirySweepInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			s.expirePendingInvoices(ctx)
+		}
+	}
+}
+
+func (s *LightningService) expirePendingInvoices(ctx context.Context) {
+	expired, err := s.repo.ExpirePendingInvoices(ctx, time.Now().UTC())
+	if err != nil {
+		log.Printf("lightning invoice expiry worker error: %v", err)
+		return
+	}
+	if expired > 0 {
+		log.Printf("lightning invoice expiry worker marked %d invoice(s) expired", expired)
 	}
 }

@@ -17,6 +17,7 @@ type mockLightningRepo struct {
 	saveErr   error
 	getErr    error
 	updateErr error
+	expireErr error
 	latest    int64
 }
 
@@ -87,7 +88,7 @@ func (m *mockLightningRepo) MarkSettled(ctx context.Context, paymentHash string,
 		return false, m.updateErr
 	}
 	if m.invoice != nil && m.invoice.PaymentHash == paymentHash {
-		if m.invoice.Status != lightning.InvoiceStatusPending {
+		if m.invoice.Status != lightning.InvoiceStatusPending && m.invoice.Status != lightning.InvoiceStatusExpired {
 			return false, nil
 		}
 		m.invoice.Settled = true
@@ -101,6 +102,17 @@ func (m *mockLightningRepo) MarkSettled(ctx context.Context, paymentHash string,
 
 func (m *mockLightningRepo) LatestSettleIndex(ctx context.Context) (int64, error) {
 	return m.latest, nil
+}
+
+func (m *mockLightningRepo) ExpirePendingInvoices(ctx context.Context, now time.Time) (int64, error) {
+	if m.expireErr != nil {
+		return 0, m.expireErr
+	}
+	if m.invoice == nil || m.invoice.Status != lightning.InvoiceStatusPending || m.invoice.ExpiresAt.IsZero() || m.invoice.ExpiresAt.After(now) {
+		return 0, nil
+	}
+	m.invoice.Status = lightning.InvoiceStatusExpired
+	return 1, nil
 }
 
 func TestRequestDonationInvoice(t *testing.T) {
@@ -126,6 +138,38 @@ func TestRequestDonationInvoice(t *testing.T) {
 	}
 	if node.request.Memo != "PamojaBuild donation task=task1" {
 		t.Fatalf("expected task slug in invoice memo, got %q", node.request.Memo)
+	}
+}
+
+func TestGetInvoiceStatusMarksExpiredInvoice(t *testing.T) {
+	repo := &mockLightningRepo{invoice: &lightning.Invoice{
+		PaymentHash: testPaymentHash,
+		TaskSlug:    "task1",
+		AmountSats:  100,
+		Status:      lightning.InvoiceStatusPending,
+		CreatedAt:   time.Now().UTC().Add(-2 * time.Hour),
+		ExpiresAt:   time.Now().UTC().Add(-time.Hour),
+	}}
+	svc := NewLightningService(repo, &mockLightningNode{}, &config.Config{}, nil)
+
+	invoice, err := svc.GetInvoiceStatus(context.Background(), testPaymentHash)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if invoice.Status != lightning.InvoiceStatusExpired {
+		t.Fatalf("expected expired invoice status, got %q", invoice.Status)
+	}
+	if invoice.Settled {
+		t.Fatal("expected expired invoice to remain unsettled")
+	}
+}
+
+func TestGetInvoiceStatusRejectsInvalidPaymentHash(t *testing.T) {
+	svc := NewLightningService(&mockLightningRepo{}, &mockLightningNode{}, &config.Config{}, nil)
+
+	_, err := svc.GetInvoiceStatus(context.Background(), "not-a-payment-hash")
+	if !errors.Is(err, lightning.ErrInvalidPaymentHash) {
+		t.Fatalf("expected ErrInvalidPaymentHash, got %v", err)
 	}
 }
 
@@ -227,6 +271,27 @@ func TestProcessIncomingSettlement(t *testing.T) {
 	}
 	if published != 1 {
 		t.Fatalf("expected one settlement event, got %d", published)
+	}
+}
+
+func TestProcessIncomingSettlementCreditsExpiredInvoiceWhenLNDSettlesIt(t *testing.T) {
+	repo := &mockLightningRepo{invoice: &lightning.Invoice{PaymentHash: testPaymentHash, TaskSlug: "task1", AmountSats: 100, Status: lightning.InvoiceStatusExpired}}
+	bus := events.NewEventBus()
+	published := 0
+	bus.Subscribe(events.PaymentSettled, func(e events.Event) {
+		published++
+	})
+	svc := NewLightningService(repo, &mockLightningNode{}, &config.Config{}, bus)
+
+	err := svc.ProcessIncomingSettlement(context.Background(), &lightning.Invoice{PaymentHash: testPaymentHash})
+	if err != nil {
+		t.Fatalf("expected expired invoice settlement to be credited, got %v", err)
+	}
+	if repo.invoice.Status != lightning.InvoiceStatusSettled {
+		t.Fatalf("expected invoice to be settled, got %q", repo.invoice.Status)
+	}
+	if published != 1 {
+		t.Fatalf("expected one settlement event for expired invoice, got %d", published)
 	}
 }
 

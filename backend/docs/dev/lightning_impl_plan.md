@@ -40,11 +40,12 @@ Already present:
 - A real LND REST client can create donation invoices.
 - Fake Lightning invoice generation is separated into a fake node client for tests.
 - Donation invoice creation now goes through the Lightning node client, validates the result, and saves the invoice before returning it.
+- The backend now listens for paid invoices and processes settlement updates.
+- Settlement handling is idempotent: duplicate paid-invoice notifications do not create duplicate ledger events.
+- Pending invoices are marked expired after their expiry time, and the status endpoint reports `expired`.
 
 Still missing:
 
-- Real settlement listener.
-- Expired-invoice cleanup and status endpoint behavior.
 - Restart recovery.
 - Phase 5-specific tests for real payment success, timeout, and restart recovery.
 
@@ -198,6 +199,8 @@ Paying an invoice causes the backend to mark it settled and publish a settlement
 
 ### Step 7: Make Settlement Idempotent
 
+Status: Done.
+
 Problem:
 
 Lightning nodes and backend processes may retry messages. That is normal. The backend must treat repeat messages safely.
@@ -205,14 +208,23 @@ Lightning nodes and backend processes may retry messages. That is normal. The ba
 Work:
 
 - If an invoice is already settled, return success without writing another ledger entry.
-- Make the database update conditional: only change `pending` to `settled`.
+- Make the database update conditional: only change an unsettled invoice to `settled`.
 - Publish `PaymentSettled` only when this backend instance actually changed the invoice from unpaid to paid.
+
+Result:
+
+- `MarkSettled` only updates invoices that have not already been settled.
+- `ProcessIncomingSettlement` returns successfully when a settlement notification repeats for an already-settled invoice.
+- `PaymentSettled` is published only when the database update changed an unsettled invoice to `settled`.
+- If LND confirms settlement for an expired known invoice, settlement wins for accounting and the invoice is credited exactly once.
 
 Success condition:
 
 If the same invoice settlement is processed twice, the ledger still gets exactly one donation entry.
 
 ### Step 8: Handle Invoice Timeout
+
+Status: Done.
 
 Problem:
 
@@ -223,6 +235,14 @@ Work:
 - Store `expires_at`.
 - Add logic to mark old unpaid invoices as expired.
 - Make the invoice status endpoint report expired invoices clearly.
+
+Result:
+
+- The Lightning repository can mark all expired pending invoices as `expired`.
+- `LightningService.GetInvoiceStatus` expires old pending invoices before reading the requested invoice.
+- The real server path starts an invoice expiry worker that periodically sweeps expired pending invoices.
+- `GET /api/v1/lightning/invoices/status?payment_hash=...` now returns the real invoice status instead of a placeholder.
+- The endpoint returns `pending`, `settled`, or `expired`, plus settlement/expiry timestamps when available.
 
 Success condition:
 

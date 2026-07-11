@@ -64,16 +64,20 @@ func (r *LightningRepository) GetByPaymentHash(ctx context.Context, paymentHash 
 }
 
 func (r *LightningRepository) MarkSettled(ctx context.Context, paymentHash string, settledAt time.Time, settleIndex int64) (bool, error) {
+	// Expired invoices are still eligible here because LND settlement is the
+	// final accounting signal. Expiry means "unpaid past the wallet deadline";
+	// if LND later confirms funds for a known invoice, we must credit them once.
 	query := `
 		UPDATE lightning_invoices
 		SET settled = true, status = $1, settled_at = $2, settle_index = $3
-		WHERE payment_hash = $4 AND status = $5`
+		WHERE payment_hash = $4 AND status IN ($5, $6)`
 	result, err := r.db.ExecContext(ctx, query,
 		lightning.InvoiceStatusSettled,
 		settledAt,
 		settleIndex,
 		paymentHash,
 		lightning.InvoiceStatusPending,
+		lightning.InvoiceStatusExpired,
 	)
 	if err != nil {
 		return false, err
@@ -96,6 +100,27 @@ func (r *LightningRepository) LatestSettleIndex(ctx context.Context) (int64, err
 		return 0, nil
 	}
 	return latest.Int64, nil
+}
+
+func (r *LightningRepository) ExpirePendingInvoices(ctx context.Context, now time.Time) (int64, error) {
+	query := `
+		UPDATE lightning_invoices
+		SET status = $1
+		WHERE status = $2 AND expires_at IS NOT NULL AND expires_at <= $3`
+	result, err := r.db.ExecContext(ctx, query,
+		lightning.InvoiceStatusExpired,
+		lightning.InvoiceStatusPending,
+		now,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+	return rowsAffected, nil
 }
 
 func nullableTime(value time.Time) interface{} {

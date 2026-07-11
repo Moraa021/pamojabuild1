@@ -181,6 +181,7 @@ func newRouter(db *sql.DB, cfg *config.Config, lightningNode lightning.NodeClien
 
 	if listenerCtx != nil {
 		go lightningSvc.StartSettlementListener(listenerCtx)
+		go lightningSvc.StartInvoiceExpiryWorker(listenerCtx)
 	}
 
 	router := gin.Default()
@@ -245,6 +246,11 @@ func newRouter(db *sql.DB, cfg *config.Config, lightningNode lightning.NodeClien
 			{
 				ledger.GET("/tasks/:slug", ledgerH.GetTaskBalance)
 				ledger.GET("/tasks/:slug/verify", ledgerH.VerifyChainIntegrity)
+			}
+
+			lightningRoutes := protected.Group("/lightning")
+			{
+				lightningRoutes.GET("/invoices/status", lightningH.CheckInvoiceStatus)
 			}
 		}
 	}

@@ -2,7 +2,13 @@ package lightning
 
 import (
 	"context"
+	"errors"
 	"time"
+)
+
+var (
+	ErrInvoiceNotFound    = errors.New("invoice not found")
+	ErrInvalidPaymentHash = errors.New("payment hash must be 64 hex characters")
 )
 
 const (
@@ -44,10 +50,13 @@ type Repository interface {
 	GetByPaymentHash(ctx context.Context, paymentHash string) (*Invoice, error)
 	MarkSettled(ctx context.Context, paymentHash string, settledAt time.Time, settleIndex int64) (bool, error)
 	LatestSettleIndex(ctx context.Context) (int64, error)
+	ExpirePendingInvoices(ctx context.Context, now time.Time) (int64, error)
 }
 
 type Service interface {
 	RequestDonationInvoice(ctx context.Context, taskSlug string, amountSats int64) (*Invoice, error)
+	GetInvoiceStatus(ctx context.Context, paymentHash string) (*Invoice, error)
 	ProcessIncomingSettlement(ctx context.Context, invoice *Invoice) error
 	StartSettlementListener(ctx context.Context)
+	StartInvoiceExpiryWorker(ctx context.Context)
 }

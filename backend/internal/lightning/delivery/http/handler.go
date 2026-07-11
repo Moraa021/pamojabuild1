@@ -1,6 +1,7 @@
 package http
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -56,15 +57,43 @@ func (h *LightningHandler) RequestDonationInvoice(c *gin.Context) {
 // @Tags         Lightning
 // @Produce      json
 // @Param        payment_hash  query  string  true  "Payment hash"
-// @Success      200           {object}  map[string]interface{}
+// @Success      200           {object}  InvoiceStatusResponse
+// @Failure      400           {object}  map[string]string
+// @Failure      404           {object}  map[string]string
+// @Failure      500           {object}  map[string]string
 // @Router       /api/v1/lightning/invoices/status [get]
 func (h *LightningHandler) CheckInvoiceStatus(c *gin.Context) {
 	paymentHash := c.Query("payment_hash")
+	if paymentHash == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "payment_hash is required"})
+		return
+	}
 
-	// This would need a GetByPaymentHash method on the service
-	// For now, return a placeholder
-	c.JSON(http.StatusOK, gin.H{
-		"payment_hash": paymentHash,
-		"settled":      false,
-	})
+	invoice, err := h.service.GetInvoiceStatus(c.Request.Context(), paymentHash)
+	if err != nil {
+		if errors.Is(err, lightning.ErrInvoiceNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+			return
+		}
+		if errors.Is(err, lightning.ErrInvalidPaymentHash) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	response := InvoiceStatusResponse{
+		PaymentHash: invoice.PaymentHash,
+		Status:      invoice.Status,
+		Settled:     invoice.Settled,
+	}
+	if !invoice.ExpiresAt.IsZero() {
+		response.ExpiresAt = invoice.ExpiresAt.Unix()
+	}
+	if !invoice.SettledAt.IsZero() {
+		response.SettledAt = invoice.SettledAt.Unix()
+	}
+
+	c.JSON(http.StatusOK, response)
 }
