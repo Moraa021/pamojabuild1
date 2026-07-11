@@ -18,21 +18,30 @@ var (
 const defaultInvoiceExpiry = time.Hour
 
 type LightningService struct {
-	repo     lightning.Client
+	repo     lightning.Repository
+	node     lightning.NodeClient
 	cfg      *config.Config
 	eventBus *events.EventBus
 }
 
-func NewLightningService(repo lightning.Client, cfg *config.Config, eventBus *events.EventBus) *LightningService {
-	return &LightningService{repo: repo, cfg: cfg, eventBus: eventBus}
+func NewLightningService(repo lightning.Repository, node lightning.NodeClient, cfg *config.Config, eventBus *events.EventBus) *LightningService {
+	return &LightningService{repo: repo, node: node, cfg: cfg, eventBus: eventBus}
 }
 
 func (s *LightningService) RequestDonationInvoice(ctx context.Context, taskSlug string, amountSats int64) (*lightning.Invoice, error) {
 	if amountSats <= 0 {
 		return nil, errors.New("amount must be greater than 0")
 	}
+	if s.node == nil {
+		return nil, ErrInvoiceGeneration
+	}
 
-	invoice, err := s.repo.GenerateBolt11Invoice(ctx, taskSlug, amountSats)
+	invoice, err := s.node.CreateInvoice(ctx, lightning.InvoiceRequest{
+		TaskSlug:   taskSlug,
+		AmountSats: amountSats,
+		Memo:       "PamojaBuild donation for " + taskSlug,
+		Expiry:     defaultInvoiceExpiry,
+	})
 	if err != nil {
 		return nil, ErrInvoiceGeneration
 	}

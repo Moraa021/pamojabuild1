@@ -3,7 +3,6 @@ package repository
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"time"
 
 	"pamojabuild1/backend/internal/lightning"
@@ -85,26 +84,6 @@ func (r *LightningRepository) MarkSettled(ctx context.Context, paymentHash strin
 		return false, err
 	}
 	return rowsAffected == 1, nil
-}
-
-func (r *LightningRepository) GenerateBolt11Invoice(ctx context.Context, taskSlug string, amountSats int64) (*lightning.Invoice, error) {
-	now := time.Now().UTC()
-	invoice := &lightning.Invoice{
-		PaymentRequest: fmt.Sprintf("lnbc%d...", amountSats),
-		PaymentHash:    fmt.Sprintf("hash_%s_%d", taskSlug, time.Now().UnixNano()),
-		AmountSats:     amountSats,
-		TaskSlug:       taskSlug,
-		Status:         lightning.InvoiceStatusPending,
-		Settled:        false,
-		CreatedAt:      now,
-		ExpiresAt:      now.Add(time.Hour),
-	}
-	return invoice, nil
-}
-
-func (r *LightningRepository) SubscribeInvoiceSettlements(ctx context.Context, callback func(settledInvoice *lightning.Invoice)) error {
-	// Placeholder: no real invoice subscription in this repository.
-	return nil
 }
 
 func nullableTime(value time.Time) interface{} {

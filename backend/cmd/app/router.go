@@ -9,6 +9,7 @@ import (
 
 	"pamojabuild1/backend/internal/config"
 	"pamojabuild1/backend/internal/events"
+	"pamojabuild1/backend/internal/lightning"
 	"pamojabuild1/backend/internal/middleware"
 
 	authHandler "pamojabuild1/backend/internal/auth/delivery/http"
@@ -27,6 +28,7 @@ import (
 	ledgerRepo "pamojabuild1/backend/internal/ledger/repository"
 	ledgerService "pamojabuild1/backend/internal/ledger/service"
 
+	lightningClient "pamojabuild1/backend/internal/lightning/client"
 	lightningHandler "pamojabuild1/backend/internal/lightning/delivery/http"
 	lightningRepo "pamojabuild1/backend/internal/lightning/repository"
 	lightningService "pamojabuild1/backend/internal/lightning/service"
@@ -41,6 +43,23 @@ import (
 )
 
 func NewRouter(db *sql.DB, cfg *config.Config) *gin.Engine {
+	lndRESTHost := cfg.LNDRESTHost
+	if lndRESTHost == "" {
+		lndRESTHost = "https://localhost:8080"
+	}
+	lightningNode, err := lightningClient.NewLNDRESTClient(lightningClient.LNDRESTConfig{
+		BaseURL:      lndRESTHost,
+		MacaroonPath: cfg.LNDMacaroon,
+		MacaroonHex:  cfg.LNDMacaroonHex,
+		TLSCertPath:  cfg.LNDTLS,
+	})
+	if err != nil {
+		panic(fmt.Sprintf("failed to configure lnd lightning client: %v", err))
+	}
+	return NewRouterWithLightningNode(db, cfg, lightningNode)
+}
+
+func NewRouterWithLightningNode(db *sql.DB, cfg *config.Config, lightningNode lightning.NodeClient) *gin.Engine {
 	eventBus := events.NewEventBus()
 
 	authRepo := authRepo.NewAuthRepository(db)
@@ -67,7 +86,7 @@ func NewRouter(db *sql.DB, cfg *config.Config) *gin.Engine {
 	trusteeH := trusteeHandler.NewTrusteeHandler(trusteeSvc)
 
 	lightningRepo := lightningRepo.NewLightningRepository(db)
-	lightningSvc := lightningService.NewLightningService(lightningRepo, cfg, eventBus)
+	lightningSvc := lightningService.NewLightningService(lightningRepo, lightningNode, cfg, eventBus)
 	lightningH := lightningHandler.NewLightningHandler(lightningSvc)
 
 	ledgerRepo := ledgerRepo.NewLedgerRepository(db)

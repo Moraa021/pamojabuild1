@@ -6,24 +6,28 @@ import (
 )
 
 type Config struct {
-	ServerPort    string
-	DatabaseURL   string
-	JWTSecret     string
-	LNDHost       string
-	LNDMacaroon   string
-	LNDTLS        string
-	ServerSecret  string
+	ServerPort     string
+	DatabaseURL    string
+	JWTSecret      string
+	LNDHost        string
+	LNDRESTHost    string
+	LNDMacaroon    string
+	LNDMacaroonHex string
+	LNDTLS         string
+	ServerSecret   string
 }
 
 func Load() *Config {
 	return &Config{
-		ServerPort:    getEnv("SERVER_PORT", "8080"),
-		DatabaseURL:   getEnv("DATABASE_URL", "/tmp/pamoja.db"),
-		JWTSecret:     getEnv("JWT_SECRET", "your-secret-key"),
-		LNDHost:       getEnv("LND_HOST", "localhost:10009"),
-		LNDMacaroon:   getEnv("LND_MACAROON", ""),
-		LNDTLS:        getEnv("LND_TLS_PATH", ""),
-		ServerSecret:  getEnv("SERVER_SECRET", "ledger-hmac-secret"),
+		ServerPort:     getEnv("SERVER_PORT", "8080"),
+		DatabaseURL:    getEnv("DATABASE_URL", "/tmp/pamoja.db"),
+		JWTSecret:      getEnv("JWT_SECRET", "your-secret-key"),
+		LNDHost:        getEnv("LND_HOST", "localhost:10009"),
+		LNDRESTHost:    getEnv("LND_REST_HOST", "https://localhost:8080"),
+		LNDMacaroon:    getEnv("LND_MACAROON", ""),
+		LNDMacaroonHex: getEnv("LND_MACAROON_HEX", ""),
+		LNDTLS:         getEnv("LND_TLS_PATH", ""),
+		ServerSecret:   getEnv("SERVER_SECRET", "ledger-hmac-secret"),
 	}
 }
 

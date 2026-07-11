@@ -21,7 +21,7 @@ func NewAuthHandler(service auth.Service) *AuthHandler {
 // @Description  Create a new user account using phone number and password, and return a JWT token.
 // @Tags         Auth
 // @Accept       json
-// @Produce      json
+// @Produce      json	
 // @Param        body  body      RegisterRequest  true  "Registration payload"
 // @Success      201   {object}  AuthResponse
 // @Failure      400   {object}  ErrorResponse

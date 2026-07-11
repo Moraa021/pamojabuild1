@@ -18,20 +18,27 @@ type mockLightningRepo struct {
 	updateErr error
 }
 
-func (m *mockLightningRepo) GenerateBolt11Invoice(ctx context.Context, taskSlug string, amountSats int64) (*lightning.Invoice, error) {
+type mockLightningNode struct {
+	createErr error
+}
+
+func (m *mockLightningNode) CreateInvoice(ctx context.Context, request lightning.InvoiceRequest) (*lightning.Invoice, error) {
+	if m.createErr != nil {
+		return nil, m.createErr
+	}
 	now := time.Now().UTC()
 	return &lightning.Invoice{
 		PaymentRequest: "lnbc100...",
 		PaymentHash:    "hash1",
-		AmountSats:     amountSats,
-		TaskSlug:       taskSlug,
+		AmountSats:     request.AmountSats,
+		TaskSlug:       request.TaskSlug,
 		Status:         lightning.InvoiceStatusPending,
 		CreatedAt:      now,
 		ExpiresAt:      now.Add(time.Hour),
 	}, nil
 }
 
-func (m *mockLightningRepo) SubscribeInvoiceSettlements(ctx context.Context, callback func(settledInvoice *lightning.Invoice)) error {
+func (m *mockLightningNode) SubscribeInvoiceSettlements(ctx context.Context, sinceSettleIndex int64, handler lightning.SettlementHandler) error {
 	return nil
 }
 
@@ -72,7 +79,8 @@ func (m *mockLightningRepo) MarkSettled(ctx context.Context, paymentHash string,
 
 func TestRequestDonationInvoice(t *testing.T) {
 	repo := &mockLightningRepo{}
-	svc := NewLightningService(repo, &config.Config{}, nil)
+	node := &mockLightningNode{}
+	svc := NewLightningService(repo, node, &config.Config{}, nil)
 
 	invoice, err := svc.RequestDonationInvoice(context.Background(), "task1", 100)
 	if err != nil {
@@ -87,6 +95,9 @@ func TestRequestDonationInvoice(t *testing.T) {
 	if invoice.CreatedAt.IsZero() || invoice.ExpiresAt.IsZero() {
 		t.Fatalf("expected invoice timestamps to be set, got %#v", invoice)
 	}
+	if repo.invoice == nil || repo.invoice.PaymentHash != invoice.PaymentHash {
+		t.Fatal("expected generated invoice to be saved")
+	}
 }
 
 func TestProcessIncomingSettlement(t *testing.T) {
@@ -96,7 +107,7 @@ func TestProcessIncomingSettlement(t *testing.T) {
 	bus.Subscribe(events.PaymentSettled, func(e events.Event) {
 		published++
 	})
-	svc := NewLightningService(repo, &config.Config{}, bus)
+	svc := NewLightningService(repo, &mockLightningNode{}, &config.Config{}, bus)
 
 	err := svc.ProcessIncomingSettlement(context.Background(), repo.invoice)
 	if err != nil {
@@ -117,7 +128,7 @@ func TestProcessIncomingSettlementAlreadySettledIsIdempotent(t *testing.T) {
 	bus.Subscribe(events.PaymentSettled, func(e events.Event) {
 		published++
 	})
-	svc := NewLightningService(repo, &config.Config{}, bus)
+	svc := NewLightningService(repo, &mockLightningNode{}, &config.Config{}, bus)
 
 	err := svc.ProcessIncomingSettlement(context.Background(), repo.invoice)
 	if err != nil {
