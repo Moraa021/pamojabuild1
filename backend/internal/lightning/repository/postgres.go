@@ -18,46 +18,86 @@ func NewLightningRepository(db *sql.DB) *LightningRepository {
 }
 
 func (r *LightningRepository) SaveInvoice(ctx context.Context, invoice *lightning.Invoice) error {
+	if invoice.Status == "" {
+		invoice.Status = lightning.InvoiceStatusPending
+	}
+
 	query := `
-		INSERT INTO lightning_invoices (payment_request, payment_hash, amount_sats, task_slug, settled, settled_at)
-		VALUES ($1, $2, $3, $4, $5, $6)`
+		INSERT INTO lightning_invoices (
+			payment_request, payment_hash, amount_sats, task_slug, status,
+			settled, created_at, expires_at, settled_at, add_index, settle_index
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`
 
 	_, err := r.db.ExecContext(ctx, query,
-		invoice.PaymentRequest, invoice.PaymentHash, invoice.AmountSats,
-		invoice.TaskSlug, invoice.Settled, invoice.SettledAt,
+		invoice.PaymentRequest, invoice.PaymentHash, invoice.AmountSats, invoice.TaskSlug,
+		invoice.Status, invoice.Settled, invoice.CreatedAt, invoice.ExpiresAt,
+		nullableTime(invoice.SettledAt), invoice.AddIndex, invoice.SettleIndex,
 	)
 	return err
 }
 
 func (r *LightningRepository) GetByPaymentHash(ctx context.Context, paymentHash string) (*lightning.Invoice, error) {
 	invoice := &lightning.Invoice{}
+	var settledAt sql.NullTime
+	var expiresAt sql.NullTime
 	query := `
-		SELECT payment_request, payment_hash, amount_sats, task_slug, settled, settled_at
+		SELECT
+			payment_request, payment_hash, amount_sats, task_slug, status,
+			settled, created_at, expires_at, settled_at, add_index, settle_index
 		FROM lightning_invoices WHERE payment_hash = $1`
 
 	err := r.db.QueryRowContext(ctx, query, paymentHash).Scan(
 		&invoice.PaymentRequest, &invoice.PaymentHash, &invoice.AmountSats,
-		&invoice.TaskSlug, &invoice.Settled, &invoice.SettledAt,
+		&invoice.TaskSlug, &invoice.Status, &invoice.Settled, &invoice.CreatedAt,
+		&expiresAt, &settledAt, &invoice.AddIndex, &invoice.SettleIndex,
 	)
 	if err != nil {
 		return nil, err
 	}
+	if expiresAt.Valid {
+		invoice.ExpiresAt = expiresAt.Time
+	}
+	if settledAt.Valid {
+		invoice.SettledAt = settledAt.Time
+	}
 	return invoice, nil
 }
 
-func (r *LightningRepository) UpdateSettlement(ctx context.Context, paymentHash string, settledAt time.Time) error {
-	query := `UPDATE lightning_invoices SET settled = true, settled_at = $1 WHERE payment_hash = $2`
-	_, err := r.db.ExecContext(ctx, query, settledAt, paymentHash)
-	return err
+func (r *LightningRepository) MarkSettled(ctx context.Context, paymentHash string, settledAt time.Time, settleIndex int64) (bool, error) {
+	query := `
+		UPDATE lightning_invoices
+		SET settled = true, status = $1, settled_at = $2, settle_index = $3
+		WHERE payment_hash = $4 AND status = $5`
+	result, err := r.db.ExecContext(ctx, query,
+		lightning.InvoiceStatusSettled,
+		settledAt,
+		settleIndex,
+		paymentHash,
+		lightning.InvoiceStatusPending,
+	)
+	if err != nil {
+		return false, err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return rowsAffected == 1, nil
 }
 
 func (r *LightningRepository) GenerateBolt11Invoice(ctx context.Context, taskSlug string, amountSats int64) (*lightning.Invoice, error) {
+	now := time.Now().UTC()
 	invoice := &lightning.Invoice{
 		PaymentRequest: fmt.Sprintf("lnbc%d...", amountSats),
-		PaymentHash:    fmt.Sprintf("hash_%s_%d", taskSlug, time.Now().Unix()),
+		PaymentHash:    fmt.Sprintf("hash_%s_%d", taskSlug, time.Now().UnixNano()),
 		AmountSats:     amountSats,
 		TaskSlug:       taskSlug,
+		Status:         lightning.InvoiceStatusPending,
 		Settled:        false,
+		CreatedAt:      now,
+		ExpiresAt:      now.Add(time.Hour),
 	}
 	return invoice, nil
 }
@@ -65,4 +105,11 @@ func (r *LightningRepository) GenerateBolt11Invoice(ctx context.Context, taskSlu
 func (r *LightningRepository) SubscribeInvoiceSettlements(ctx context.Context, callback func(settledInvoice *lightning.Invoice)) error {
 	// Placeholder: no real invoice subscription in this repository.
 	return nil
+}
+
+func nullableTime(value time.Time) interface{} {
+	if value.IsZero() {
+		return nil
+	}
+	return value
 }

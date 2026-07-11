@@ -46,7 +46,7 @@ func (h *LightningHandler) RequestDonationInvoice(c *gin.Context) {
 	c.JSON(http.StatusCreated, DonationInvoiceResponse{
 		PaymentRequest: invoice.PaymentRequest,
 		PaymentHash:    invoice.PaymentHash,
-		ExpiresAt:      invoice.SettledAt.Unix() + 3600, // 1 hour expiry
+		ExpiresAt:      invoice.ExpiresAt.Unix(),
 	})
 }
 
