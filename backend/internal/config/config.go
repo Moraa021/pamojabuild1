@@ -9,6 +9,7 @@ type Config struct {
 	ServerPort     string
 	DatabaseURL    string
 	JWTSecret      string
+	LNDClientMode  string
 	LNDHost        string
 	LNDRESTHost    string
 	LNDMacaroon    string
@@ -22,6 +23,7 @@ func Load() *Config {
 		ServerPort:     getEnv("SERVER_PORT", "8080"),
 		DatabaseURL:    getEnv("DATABASE_URL", "/tmp/pamoja.db"),
 		JWTSecret:      getEnv("JWT_SECRET", "your-secret-key"),
+		LNDClientMode:  getEnv("LND_CLIENT_MODE", "grpc"),
 		LNDHost:        getEnv("LND_HOST", "localhost:10009"),
 		LNDRESTHost:    getEnv("LND_REST_HOST", "https://localhost:8080"),
 		LNDMacaroon:    getEnv("LND_MACAROON", ""),

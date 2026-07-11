@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -43,20 +44,44 @@ import (
 )
 
 func NewRouter(db *sql.DB, cfg *config.Config) *gin.Engine {
+	lightningNode, err := newLightningNodeClient(cfg)
+	if err != nil {
+		panic(fmt.Sprintf("failed to configure lnd lightning client: %v", err))
+	}
+	return NewRouterWithLightningNode(db, cfg, lightningNode)
+}
+
+func newLightningNodeClient(cfg *config.Config) (lightning.NodeClient, error) {
+	switch strings.ToLower(strings.TrimSpace(cfg.LNDClientMode)) {
+	case "", "grpc":
+		lndHost := cfg.LNDHost
+		if lndHost == "" {
+			lndHost = "localhost:10009"
+		}
+		return lightningClient.NewLNDGRPCClient(lightningClient.LNDGRPCConfig{
+			Host:         lndHost,
+			MacaroonPath: cfg.LNDMacaroon,
+			MacaroonHex:  cfg.LNDMacaroonHex,
+			TLSCertPath:  cfg.LNDTLS,
+		})
+	case "rest":
+		return newLightningRESTNodeClient(cfg)
+	default:
+		return nil, fmt.Errorf("unsupported LND_CLIENT_MODE %q", cfg.LNDClientMode)
+	}
+}
+
+func newLightningRESTNodeClient(cfg *config.Config) (lightning.NodeClient, error) {
 	lndRESTHost := cfg.LNDRESTHost
 	if lndRESTHost == "" {
 		lndRESTHost = "https://localhost:8080"
 	}
-	lightningNode, err := lightningClient.NewLNDRESTClient(lightningClient.LNDRESTConfig{
+	return lightningClient.NewLNDRESTClient(lightningClient.LNDRESTConfig{
 		BaseURL:      lndRESTHost,
 		MacaroonPath: cfg.LNDMacaroon,
 		MacaroonHex:  cfg.LNDMacaroonHex,
 		TLSCertPath:  cfg.LNDTLS,
 	})
-	if err != nil {
-		panic(fmt.Sprintf("failed to configure lnd lightning client: %v", err))
-	}
-	return NewRouterWithLightningNode(db, cfg, lightningNode)
 }
 
 func NewRouterWithLightningNode(db *sql.DB, cfg *config.Config, lightningNode lightning.NodeClient) *gin.Engine {
