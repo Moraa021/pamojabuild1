@@ -102,6 +102,40 @@ The main architecture decision is that fake Lightning belongs in a fake `NodeCli
 
 ## LND Environment Variables
 
+`LND_CLIENT_MODE` chooses which real LND adapter the backend uses.
+
+For production work, the default is:
+
+```bash
+LND_CLIENT_MODE=grpc
+```
+
+gRPC is the default because LND's invoice settlement updates are a long-running stream, and gRPC handles typed streams more naturally than REST. The REST client still exists as a fallback/reference path:
+
+```bash
+LND_CLIENT_MODE=rest
+```
+
+`LND_HOST` is the address of the LND gRPC API.
+
+Example:
+
+```bash
+LND_HOST=localhost:10009
+```
+
+This is the main host setting when `LND_CLIENT_MODE=grpc`.
+
+LND's official release tags currently include `beta` in the LND version name, for example `v0.20.2-beta`. That is different from using a beta Go compiler. For Go itself, stable versions look like `go1.25.5`; pre-release versions include labels such as `beta` or `rc`.
+
+The backend mirrors LND's protobuf replacement:
+
+```go
+replace google.golang.org/protobuf => github.com/lightninglabs/protobuf-go-hex-display v1.33.0-hex-display
+```
+
+This is needed because LND uses protobuf JSON behavior from that replacement, and Go applications do not automatically inherit `replace` rules from dependencies.
+
 `LND_REST_HOST` is the address of the LND REST API.
 
 Example:
@@ -110,7 +144,7 @@ Example:
 LND_REST_HOST=https://localhost:8080
 ```
 
-It tells the backend where to send requests when it needs LND to create invoices or stream invoice updates.
+It tells the backend where to send REST requests when `LND_CLIENT_MODE=rest`.
 
 `LND_MACAROON` or `LND_MACAROON_HEX` is how the backend proves to LND that it is allowed to make requests.
 
@@ -141,6 +175,9 @@ It lets the backend verify that it is really talking to the intended LND node.
 Short version:
 
 - `LND_REST_HOST`: where LND is.
+- `LND_CLIENT_MODE`: whether the backend uses the gRPC or REST LND adapter.
+- `LND_HOST`: where LND's gRPC server is.
+- `LND_REST_HOST`: where LND's REST server is, only for REST mode.
 - `LND_MACAROON` or `LND_MACAROON_HEX`: proof that the backend is allowed to talk to LND.
 - `LND_TLS_PATH`: proof that the server reached is really the intended LND server.
 

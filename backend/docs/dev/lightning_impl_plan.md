@@ -129,6 +129,48 @@ Success condition:
 
 A donor can request an invoice, and the response contains a real BOLT11 invoice created by LND.
 
+### Step 6a: Switch Production LND Client To gRPC Before Streaming
+
+Status: Done.
+
+Problem:
+
+Step 5 used LND REST because it was a smaller, dependency-light way to prove real invoice creation through the new `NodeClient` boundary. Step 6 introduces settlement listening, which is naturally a long-running stream of invoice updates. LND's gRPC API is the better production fit for that listener because it is the native LND API, uses typed protobuf messages, and supports streaming cleanly.
+
+Decision:
+
+Before building the paid-invoice listener, evaluate and implement a production `LNDGRPCClient` behind the existing `lightning.NodeClient` interface. The existing REST client can remain as a reference or fallback, but the production listener path should prefer gRPC if dependency and configuration setup are acceptable.
+
+Work:
+
+- Add official LND gRPC/protobuf dependencies.
+- Add a `backend/internal/lightning/client/lnd_grpc.go` implementation of `lightning.NodeClient`.
+- Reuse the existing service boundary so `LightningService` does not care whether the node client uses REST or gRPC.
+- Connect to LND using host, TLS certificate, and macaroon credentials.
+- Implement `CreateInvoice` with LND gRPC `AddInvoice`.
+- Implement `SubscribeInvoiceSettlements` with LND gRPC invoice subscription streaming.
+- Convert LND protobuf invoice responses into the internal `lightning.Invoice` domain type.
+- Preserve the existing validation behavior: payment request required, 32-byte payment hash required, task slug stored in our database row.
+- Add focused tests using mocks/fakes around the gRPC adapter behavior where possible.
+- Decide whether production router wiring should use gRPC by default, while keeping REST available only if explicitly configured.
+
+Result:
+
+- Added the official LND module at `github.com/lightningnetwork/lnd v0.20.2-beta`, which is LND's signed official release naming rather than a Go beta toolchain.
+- Mirrored LND's `google.golang.org/protobuf` replacement with `github.com/lightninglabs/protobuf-go-hex-display`, because Go does not inherit `replace` directives from dependency modules.
+- Added a gRPC `LNDGRPCClient` that implements the existing `NodeClient` interface.
+- Kept the REST client available as `LND_CLIENT_MODE=rest`, but made `LND_CLIENT_MODE=grpc` the default.
+- Kept the Lightning service unchanged, because it already depends on the interface rather than a concrete REST or gRPC client.
+- Added unit tests for gRPC invoice creation and settlement stream conversion.
+
+Beginner version:
+
+REST was a useful first bridge to LND, but Step 6 needs a live stream of invoice updates. gRPC is better at streams. Because we already created the `NodeClient` interface, switching the real client should not change the Lightning service's business logic.
+
+Success condition:
+
+The backend has a production-ready gRPC LND client that can create invoices and expose a settlement subscription through the existing `NodeClient` interface. After that, Step 6 can wire the background listener without building on the weaker REST streaming path.
+
 ### Step 6: Listen for Paid Invoices
 
 Work:

@@ -23,7 +23,7 @@ Treat PamojaBuild as production software for real users and real funds. Do not w
 
 ## Comments
 
-Use comments to explain decisions, tradeoffs, security assumptions, and non-obvious behavior.
+Comment your code. But use comments to explain decisions, tradeoffs, security assumptions, and non-obvious behavior.
 
 Good comments explain why something is done, for example:
 
