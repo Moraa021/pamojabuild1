@@ -20,16 +20,24 @@ type mockLightningRepo struct {
 
 type mockLightningNode struct {
 	createErr error
+	request   lightning.InvoiceRequest
+	invoice   *lightning.Invoice
 }
+
+const testPaymentHash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
 func (m *mockLightningNode) CreateInvoice(ctx context.Context, request lightning.InvoiceRequest) (*lightning.Invoice, error) {
 	if m.createErr != nil {
 		return nil, m.createErr
 	}
+	m.request = request
+	if m.invoice != nil {
+		return m.invoice, nil
+	}
 	now := time.Now().UTC()
 	return &lightning.Invoice{
 		PaymentRequest: "lnbc100...",
-		PaymentHash:    "hash1",
+		PaymentHash:    testPaymentHash,
 		AmountSats:     request.AmountSats,
 		TaskSlug:       request.TaskSlug,
 		Status:         lightning.InvoiceStatusPending,
@@ -98,10 +106,33 @@ func TestRequestDonationInvoice(t *testing.T) {
 	if repo.invoice == nil || repo.invoice.PaymentHash != invoice.PaymentHash {
 		t.Fatal("expected generated invoice to be saved")
 	}
+	if node.request.Memo != "PamojaBuild donation task=task1" {
+		t.Fatalf("expected task slug in invoice memo, got %q", node.request.Memo)
+	}
+}
+
+func TestRequestDonationInvoiceRejectsInvalidNodeInvoice(t *testing.T) {
+	repo := &mockLightningRepo{}
+	node := &mockLightningNode{invoice: &lightning.Invoice{
+		PaymentRequest: "lnbc100...",
+		PaymentHash:    "not-a-real-payment-hash",
+		AmountSats:     100,
+		TaskSlug:       "task1",
+		Status:         lightning.InvoiceStatusPending,
+	}}
+	svc := NewLightningService(repo, node, &config.Config{}, nil)
+
+	_, err := svc.RequestDonationInvoice(context.Background(), "task1", 100)
+	if !errors.Is(err, ErrInvalidInvoice) {
+		t.Fatalf("expected ErrInvalidInvoice, got %v", err)
+	}
+	if repo.invoice != nil {
+		t.Fatal("expected invalid invoice not to be saved")
+	}
 }
 
 func TestProcessIncomingSettlement(t *testing.T) {
-	repo := &mockLightningRepo{invoice: &lightning.Invoice{PaymentHash: "hash1", TaskSlug: "task1", AmountSats: 100, Status: lightning.InvoiceStatusPending}}
+	repo := &mockLightningRepo{invoice: &lightning.Invoice{PaymentHash: testPaymentHash, TaskSlug: "task1", AmountSats: 100, Status: lightning.InvoiceStatusPending}}
 	bus := events.NewEventBus()
 	published := 0
 	bus.Subscribe(events.PaymentSettled, func(e events.Event) {
@@ -122,7 +153,7 @@ func TestProcessIncomingSettlement(t *testing.T) {
 }
 
 func TestProcessIncomingSettlementAlreadySettledIsIdempotent(t *testing.T) {
-	repo := &mockLightningRepo{invoice: &lightning.Invoice{PaymentHash: "hash1", TaskSlug: "task1", AmountSats: 100, Settled: true, Status: lightning.InvoiceStatusSettled}}
+	repo := &mockLightningRepo{invoice: &lightning.Invoice{PaymentHash: testPaymentHash, TaskSlug: "task1", AmountSats: 100, Settled: true, Status: lightning.InvoiceStatusSettled}}
 	bus := events.NewEventBus()
 	published := 0
 	bus.Subscribe(events.PaymentSettled, func(e events.Event) {

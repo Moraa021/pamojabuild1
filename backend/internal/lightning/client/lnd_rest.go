@@ -22,6 +22,7 @@ import (
 )
 
 const maxLNDResponseBytes = 1 << 20
+const lndPaymentHashBytes = 32
 
 type LNDRESTConfig struct {
 	BaseURL      string
@@ -271,8 +272,12 @@ func newHTTPClient(tlsCertPath string) (*http.Client, error) {
 
 func decodePaymentHash(base64Hash string, hexHash string) (string, error) {
 	if hexHash != "" {
-		if _, err := hex.DecodeString(hexHash); err != nil {
+		decoded, err := hex.DecodeString(hexHash)
+		if err != nil {
 			return "", err
+		}
+		if len(decoded) != lndPaymentHashBytes {
+			return "", fmt.Errorf("payment hash must be %d bytes", lndPaymentHashBytes)
 		}
 		return strings.ToLower(hexHash), nil
 	}
@@ -282,6 +287,9 @@ func decodePaymentHash(base64Hash string, hexHash string) (string, error) {
 	decoded, err := base64.StdEncoding.DecodeString(base64Hash)
 	if err != nil {
 		return "", err
+	}
+	if len(decoded) != lndPaymentHashBytes {
+		return "", fmt.Errorf("payment hash must be %d bytes", lndPaymentHashBytes)
 	}
 	return hex.EncodeToString(decoded), nil
 }

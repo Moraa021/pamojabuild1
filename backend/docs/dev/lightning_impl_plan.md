@@ -37,11 +37,12 @@ Already present:
 - Backend tests currently pass with `go test ./...`.
 - Invoice records now include status, creation time, expiry time, and LND index fields for later recovery work.
 - Duplicate settlement handling is now safe at the service layer.
+- A real LND REST client can create donation invoices.
+- Fake Lightning invoice generation is separated into a fake node client for tests.
+- Donation invoice creation now goes through the Lightning node client, validates the result, and saves the invoice before returning it.
 
 Still missing:
 
-- Real LND client.
-- Real BOLT11 invoice generation.
 - Real settlement listener.
 - Expired-invoice cleanup and status endpoint behavior.
 - Restart recovery.
@@ -95,6 +96,8 @@ Work:
 
 ### Step 4: Split Fake Lightning From Real Lightning
 
+Status: Done.
+
 Problem:
 
 The current code creates fake invoice strings directly inside the service/repository layer.
@@ -111,12 +114,16 @@ The service should not care whether it is talking to a fake test node or real LN
 
 ### Step 5: Generate Real Invoices With LND
 
+Status: Done.
+
 Work:
 
 - Use LND to create real Lightning invoices.
 - Include the task slug in invoice metadata so the payment can be connected back to the correct task.
 - Save the invoice before returning it to the donor.
 - Return the payment request, payment hash, and expiry time from the API.
+- Added LND REST client coverage proving the backend sends amount, expiry, macaroon auth, and task metadata to LND.
+- Added service validation so malformed node invoice responses are not saved.
 
 Success condition:
 

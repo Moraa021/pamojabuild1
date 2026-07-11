@@ -2,7 +2,10 @@ package service
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
+	"fmt"
+	"strings"
 	"time"
 
 	"pamojabuild1/backend/internal/config"
@@ -16,6 +19,7 @@ var (
 )
 
 const defaultInvoiceExpiry = time.Hour
+const paymentHashHexLength = 64
 
 type LightningService struct {
 	repo     lightning.Repository
@@ -39,13 +43,13 @@ func (s *LightningService) RequestDonationInvoice(ctx context.Context, taskSlug 
 	invoice, err := s.node.CreateInvoice(ctx, lightning.InvoiceRequest{
 		TaskSlug:   taskSlug,
 		AmountSats: amountSats,
-		Memo:       "PamojaBuild donation for " + taskSlug,
+		Memo:       donationInvoiceMemo(taskSlug),
 		Expiry:     defaultInvoiceExpiry,
 	})
 	if err != nil {
 		return nil, ErrInvoiceGeneration
 	}
-	if invoice == nil || invoice.PaymentRequest == "" || invoice.PaymentHash == "" {
+	if invoice == nil || invoice.PaymentRequest == "" || !isPaymentHashHex(invoice.PaymentHash) {
 		return nil, ErrInvalidInvoice
 	}
 
@@ -71,6 +75,20 @@ func (s *LightningService) RequestDonationInvoice(ctx context.Context, taskSlug 
 	}
 
 	return invoice, nil
+}
+
+func donationInvoiceMemo(taskSlug string) string {
+	// The memo gives operators and wallets human-readable context, but accounting
+	// attribution still relies on our payment_hash -> task_slug database record.
+	return fmt.Sprintf("PamojaBuild donation task=%s", taskSlug)
+}
+
+func isPaymentHashHex(paymentHash string) bool {
+	if len(paymentHash) != paymentHashHexLength {
+		return false
+	}
+	_, err := hex.DecodeString(strings.ToLower(paymentHash))
+	return err == nil
 }
 
 func (s *LightningService) ProcessIncomingSettlement(ctx context.Context, invoice *lightning.Invoice) error {
