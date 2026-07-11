@@ -149,7 +149,21 @@ func TestRequestDonationInvoice(t *testing.T) {
 	}
 }
 
-func TestGetInvoiceStatusMarksExpiredInvoice(t *testing.T) {
+func TestRequestDonationInvoiceRejectsInvalidAmount(t *testing.T) {
+	repo := &mockLightningRepo{}
+	node := &mockLightningNode{}
+	svc := NewLightningService(repo, node, &config.Config{}, nil)
+
+	_, err := svc.RequestDonationInvoice(context.Background(), "task1", 0)
+	if err == nil {
+		t.Fatal("expected invalid amount error")
+	}
+	if repo.invoice != nil {
+		t.Fatal("expected invalid donation amount not to create an invoice")
+	}
+}
+
+func TestPhase5PaymentTimeoutExpiresInvoice(t *testing.T) {
 	repo := &mockLightningRepo{invoice: &lightning.Invoice{
 		PaymentHash: testPaymentHash,
 		TaskSlug:    "task1",
@@ -205,7 +219,7 @@ func TestProcessIncomingSettlementIgnoresUnknownPaymentHashAndAdvancesCursor(t *
 	}
 }
 
-func TestStartSettlementListenerSubscribesFromLatestIndex(t *testing.T) {
+func TestPhase5NodeRestartRecoverySubscribesFromLatestIndex(t *testing.T) {
 	repo := &mockLightningRepo{
 		invoice: &lightning.Invoice{
 			PaymentHash: testPaymentHash,
@@ -270,12 +284,14 @@ func TestRequestDonationInvoiceRejectsInvalidNodeInvoice(t *testing.T) {
 	}
 }
 
-func TestProcessIncomingSettlement(t *testing.T) {
+func TestPhase5PaymentSuccessPublishesSettlementEvent(t *testing.T) {
 	repo := &mockLightningRepo{invoice: &lightning.Invoice{PaymentHash: testPaymentHash, TaskSlug: "task1", AmountSats: 100, Status: lightning.InvoiceStatusPending}}
 	bus := events.NewEventBus()
 	published := 0
+	var payload events.PaymentSettledPayload
 	bus.Subscribe(events.PaymentSettled, func(e events.Event) {
 		published++
+		payload = e.Payload.(events.PaymentSettledPayload)
 	})
 	svc := NewLightningService(repo, &mockLightningNode{}, &config.Config{}, bus)
 
@@ -288,6 +304,9 @@ func TestProcessIncomingSettlement(t *testing.T) {
 	}
 	if published != 1 {
 		t.Fatalf("expected one settlement event, got %d", published)
+	}
+	if payload.TaskSlug != "task1" || payload.AmountSats != 100 || payload.PaymentHash != testPaymentHash {
+		t.Fatalf("unexpected settlement payload %#v", payload)
 	}
 }
 
@@ -309,6 +328,30 @@ func TestProcessIncomingSettlementCreditsExpiredInvoiceWhenLNDSettlesIt(t *testi
 	}
 	if published != 1 {
 		t.Fatalf("expected one settlement event for expired invoice, got %d", published)
+	}
+}
+
+func TestPhase5DuplicateSettlementCreatesOneLedgerEvent(t *testing.T) {
+	repo := &mockLightningRepo{invoice: &lightning.Invoice{PaymentHash: testPaymentHash, TaskSlug: "task1", AmountSats: 100, Status: lightning.InvoiceStatusPending}}
+	bus := events.NewEventBus()
+	ledgerEntries := 0
+	bus.Subscribe(events.PaymentSettled, func(e events.Event) {
+		ledgerEntries++
+	})
+	svc := NewLightningService(repo, &mockLightningNode{}, &config.Config{}, bus)
+
+	settlement := &lightning.Invoice{PaymentHash: testPaymentHash, SettleIndex: 44}
+	if err := svc.ProcessIncomingSettlement(context.Background(), settlement); err != nil {
+		t.Fatalf("expected first settlement to succeed, got %v", err)
+	}
+	if err := svc.ProcessIncomingSettlement(context.Background(), settlement); err != nil {
+		t.Fatalf("expected duplicate settlement to succeed, got %v", err)
+	}
+	if ledgerEntries != 1 {
+		t.Fatalf("expected one ledger-triggering event, got %d", ledgerEntries)
+	}
+	if repo.cursor != 44 {
+		t.Fatalf("expected recovery cursor to advance to 44, got %d", repo.cursor)
 	}
 }
 
