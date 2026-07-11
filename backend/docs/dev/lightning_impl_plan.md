@@ -277,6 +277,8 @@ If the backend restarts after an invoice was paid, it still records the donation
 
 ### Step 10: Add Phase 5 Tests
 
+Status: Done.
+
 Required tests from `workflow.md`:
 
 - Payment success.
@@ -290,6 +292,14 @@ Additional useful tests:
 - Unknown payment hash is handled safely.
 - Settled invoice publishes exactly one event.
 - Settled invoice creates exactly one ledger entry.
+
+Result:
+
+- Added explicit service tests for payment success, timeout, duplicate settlement, and restart recovery.
+- Added coverage for invalid donation amounts and unknown payment hashes.
+- Added coverage that duplicate settlements only emit one ledger-triggering payment event.
+- Added repository tests for durable settlement cursor behavior and expiry SQL behavior.
+- Kept these tests node-free so normal backend test runs do not require a live LND node.
 
 ## What We Should Avoid During Phase 5
 
