@@ -1,203 +1,259 @@
 package main
 
 import (
-    "context"
-    "database/sql"
-    "fmt"
+	"context"
+	"database/sql"
+	"fmt"
+	"strings"
 
-    "github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin"
 
-    "pamojabuild1/backend/internal/config"
-    "pamojabuild1/backend/internal/events"
-    "pamojabuild1/backend/internal/middleware"
+	"pamojabuild1/backend/internal/config"
+	"pamojabuild1/backend/internal/events"
+	"pamojabuild1/backend/internal/lightning"
+	"pamojabuild1/backend/internal/middleware"
 
-    authHandler "pamojabuild1/backend/internal/auth/delivery/http"
-    authRepo "pamojabuild1/backend/internal/auth/repository"
-    authService "pamojabuild1/backend/internal/auth/service"
+	authHandler "pamojabuild1/backend/internal/auth/delivery/http"
+	authRepo "pamojabuild1/backend/internal/auth/repository"
+	authService "pamojabuild1/backend/internal/auth/service"
 
-    volunteerHandler "pamojabuild1/backend/internal/volunteer/delivery/http"
-    volunteerRepo "pamojabuild1/backend/internal/volunteer/repository"
-    volunteerService "pamojabuild1/backend/internal/volunteer/service"
+	volunteerHandler "pamojabuild1/backend/internal/volunteer/delivery/http"
+	volunteerRepo "pamojabuild1/backend/internal/volunteer/repository"
+	volunteerService "pamojabuild1/backend/internal/volunteer/service"
 
-    escrowHandler "pamojabuild1/backend/internal/escrow/delivery/http"
-    escrowRepo "pamojabuild1/backend/internal/escrow/repository"
-    escrowService "pamojabuild1/backend/internal/escrow/service"
+	escrowHandler "pamojabuild1/backend/internal/escrow/delivery/http"
+	escrowRepo "pamojabuild1/backend/internal/escrow/repository"
+	escrowService "pamojabuild1/backend/internal/escrow/service"
 
-    ledgerHandler "pamojabuild1/backend/internal/ledger/delivery/http"
-    ledgerRepo "pamojabuild1/backend/internal/ledger/repository"
-    ledgerService "pamojabuild1/backend/internal/ledger/service"
+	ledgerHandler "pamojabuild1/backend/internal/ledger/delivery/http"
+	ledgerRepo "pamojabuild1/backend/internal/ledger/repository"
+	ledgerService "pamojabuild1/backend/internal/ledger/service"
 
-    lightningHandler "pamojabuild1/backend/internal/lightning/delivery/http"
-    lightningRepo "pamojabuild1/backend/internal/lightning/repository"
-    lightningService "pamojabuild1/backend/internal/lightning/service"
+	lightningClient "pamojabuild1/backend/internal/lightning/client"
+	lightningHandler "pamojabuild1/backend/internal/lightning/delivery/http"
+	lightningRepo "pamojabuild1/backend/internal/lightning/repository"
+	lightningService "pamojabuild1/backend/internal/lightning/service"
 
-    taskHandler "pamojabuild1/backend/internal/task/delivery/http"
-    taskRepo "pamojabuild1/backend/internal/task/repository"
-    taskService "pamojabuild1/backend/internal/task/service"
+	taskHandler "pamojabuild1/backend/internal/task/delivery/http"
+	taskRepo "pamojabuild1/backend/internal/task/repository"
+	taskService "pamojabuild1/backend/internal/task/service"
 
-    trusteeHandler "pamojabuild1/backend/internal/trustee/delivery/http"
-    trusteeRepo "pamojabuild1/backend/internal/trustee/repository"
-    trusteeService "pamojabuild1/backend/internal/trustee/service"
+	trusteeHandler "pamojabuild1/backend/internal/trustee/delivery/http"
+	trusteeRepo "pamojabuild1/backend/internal/trustee/repository"
+	trusteeService "pamojabuild1/backend/internal/trustee/service"
 )
 
 func NewRouter(db *sql.DB, cfg *config.Config) *gin.Engine {
-    eventBus := events.NewEventBus()
+	return NewRouterWithContext(nil, db, cfg)
+}
 
-    authRepo := authRepo.NewAuthRepository(db)
-    authSvc := authService.NewAuthService(authRepo, cfg.JWTSecret)
-    authH := authHandler.NewAuthHandler(authSvc)
+func NewRouterWithContext(ctx context.Context, db *sql.DB, cfg *config.Config) *gin.Engine {
+	lightningNode, err := newLightningNodeClient(cfg)
+	if err != nil {
+		panic(fmt.Sprintf("failed to configure lnd lightning client: %v", err))
+	}
+	return newRouter(db, cfg, lightningNode, ctx)
+}
 
-    profileRepo := volunteerRepo.NewProfileRepository(db)
-    applicationRepo := volunteerRepo.NewApplicationRepository(db)
-    submissionRepo := volunteerRepo.NewSubmissionRepository(db)
-    paymentRepo := volunteerRepo.NewPaymentRepository(db)
+func newLightningNodeClient(cfg *config.Config) (lightning.NodeClient, error) {
+	switch strings.ToLower(strings.TrimSpace(cfg.LNDClientMode)) {
+	case "", "grpc":
+		lndHost := cfg.LNDHost
+		if lndHost == "" {
+			lndHost = "localhost:10009"
+		}
+		return lightningClient.NewLNDGRPCClient(lightningClient.LNDGRPCConfig{
+			Host:         lndHost,
+			MacaroonPath: cfg.LNDMacaroon,
+			MacaroonHex:  cfg.LNDMacaroonHex,
+			TLSCertPath:  cfg.LNDTLS,
+		})
+	case "rest":
+		return newLightningRESTNodeClient(cfg)
+	default:
+		return nil, fmt.Errorf("unsupported LND_CLIENT_MODE %q", cfg.LNDClientMode)
+	}
+}
 
-    volunteerSvc := volunteerService.NewVolunteerService(profileRepo)
-    applicationSvc := volunteerService.NewApplicationService(applicationRepo, eventBus)
-    submissionSvc := volunteerService.NewSubmissionService(submissionRepo, applicationRepo, eventBus)
-    reputationSvc := volunteerService.NewReputationService(profileRepo, applicationRepo, submissionRepo, paymentRepo)
-    volunteerH := volunteerHandler.NewVolunteerHandler(volunteerSvc, applicationSvc, submissionSvc, reputationSvc)
+func newLightningRESTNodeClient(cfg *config.Config) (lightning.NodeClient, error) {
+	lndRESTHost := cfg.LNDRESTHost
+	if lndRESTHost == "" {
+		lndRESTHost = "https://localhost:8080"
+	}
+	return lightningClient.NewLNDRESTClient(lightningClient.LNDRESTConfig{
+		BaseURL:      lndRESTHost,
+		MacaroonPath: cfg.LNDMacaroon,
+		MacaroonHex:  cfg.LNDMacaroonHex,
+		TLSCertPath:  cfg.LNDTLS,
+	})
+}
 
-    taskRepo := taskRepo.NewTaskRepository(db)
-    taskSvc := taskService.NewTaskService(taskRepo, eventBus)
-    taskH := taskHandler.NewTaskHandler(taskSvc)
+func NewRouterWithLightningNode(db *sql.DB, cfg *config.Config, lightningNode lightning.NodeClient) *gin.Engine {
+	return newRouter(db, cfg, lightningNode, nil)
+}
 
-    trusteeRepo := trusteeRepo.NewTrusteeRepository(db)
-    trusteeSvc := trusteeService.NewTrusteeService(trusteeRepo, trusteeRepo, eventBus)
-    trusteeH := trusteeHandler.NewTrusteeHandler(trusteeSvc)
+func newRouter(db *sql.DB, cfg *config.Config, lightningNode lightning.NodeClient, listenerCtx context.Context) *gin.Engine {
+	eventBus := events.NewEventBus()
 
-    lightningRepo := lightningRepo.NewLightningRepository(db)
-    lightningSvc := lightningService.NewLightningService(lightningRepo, cfg, eventBus)
-    lightningH := lightningHandler.NewLightningHandler(lightningSvc)
+	authRepo := authRepo.NewAuthRepository(db)
+	authSvc := authService.NewAuthService(authRepo, cfg.JWTSecret)
+	authH := authHandler.NewAuthHandler(authSvc)
 
-    ledgerRepo := ledgerRepo.NewLedgerRepository(db)
-    ledgerSvc := ledgerService.NewLedgerService(ledgerRepo, cfg.ServerSecret, eventBus)
-    ledgerH := ledgerHandler.NewLedgerHandler(ledgerSvc)
+	profileRepo := volunteerRepo.NewProfileRepository(db)
+	applicationRepo := volunteerRepo.NewApplicationRepository(db)
+	submissionRepo := volunteerRepo.NewSubmissionRepository(db)
+	paymentRepo := volunteerRepo.NewPaymentRepository(db)
 
-    escrowRepo := escrowRepo.NewEscrowRepository(db)
-    escrowSvc := escrowService.NewEscrowService(escrowRepo, trusteeRepo, ledgerRepo, eventBus)
-    escrowH := escrowHandler.NewEscrowHandler(escrowSvc)
+	volunteerSvc := volunteerService.NewVolunteerService(profileRepo)
+	applicationSvc := volunteerService.NewApplicationService(applicationRepo, eventBus)
+	submissionSvc := volunteerService.NewSubmissionService(submissionRepo, applicationRepo, eventBus)
+	reputationSvc := volunteerService.NewReputationService(profileRepo, applicationRepo, submissionRepo, paymentRepo)
+	volunteerH := volunteerHandler.NewVolunteerHandler(volunteerSvc, applicationSvc, submissionSvc, reputationSvc)
 
-    eventBus.Subscribe(events.PaymentSettled, func(event events.Event) {
-        payload := event.Payload.(events.PaymentSettledPayload)
-        ctx := context.Background()
-        ledgerSvc.RecordValidatedTransaction(ctx, payload.TaskSlug, "INBOUND_DONATION", payload.AmountSats, payload.PaymentHash)
-    })
+	taskRepo := taskRepo.NewTaskRepository(db)
+	taskSvc := taskService.NewTaskService(taskRepo, eventBus)
+	taskH := taskHandler.NewTaskHandler(taskSvc)
 
-    eventBus.Subscribe(events.TaskCreated, func(event events.Event) {
-        payload := event.Payload.(events.TaskCreatedPayload)
-        ctx := context.Background()
-        ledgerSvc.RecordValidatedTransaction(ctx, payload.TaskSlug, "TASK_CREATED", 0, payload.TaskSlug)
-    })
+	trusteeRepo := trusteeRepo.NewTrusteeRepository(db)
+	trusteeSvc := trusteeService.NewTrusteeService(trusteeRepo, trusteeRepo, eventBus)
+	trusteeH := trusteeHandler.NewTrusteeHandler(trusteeSvc)
 
-    eventBus.Subscribe(events.ApplicationSubmitted, func(event events.Event) {
-        payload := event.Payload.(events.ApplicationSubmittedPayload)
-        ctx := context.Background()
-        ledgerSvc.RecordValidatedTransaction(ctx, payload.TaskSlug, "APPLICATION_SUBMITTED", 0, fmt.Sprintf("volunteer-%d", payload.VolunteerID))
-    })
+	lightningRepo := lightningRepo.NewLightningRepository(db)
+	lightningSvc := lightningService.NewLightningService(lightningRepo, lightningNode, cfg, eventBus)
+	lightningH := lightningHandler.NewLightningHandler(lightningSvc)
 
-    eventBus.Subscribe(events.SubmissionCreated, func(event events.Event) {
-        payload := event.Payload.(events.SubmissionCreatedPayload)
-        ctx := context.Background()
-        if err := taskSvc.TransitionVolunteerStatus(ctx, payload.TaskSlug, "submitted"); err != nil {
-            fmt.Printf("failed to transition task status on submission: %v\n", err)
-        }
-        ledgerSvc.RecordValidatedTransaction(ctx, payload.TaskSlug, "SUBMISSION_CREATED", 0, fmt.Sprintf("volunteer-%d", payload.VolunteerID))
-    })
+	ledgerRepo := ledgerRepo.NewLedgerRepository(db)
+	ledgerSvc := ledgerService.NewLedgerService(ledgerRepo, cfg.ServerSecret, eventBus)
+	ledgerH := ledgerHandler.NewLedgerHandler(ledgerSvc)
 
-    eventBus.Subscribe(events.PaymentSettled, func(event events.Event) {
-        payload := event.Payload.(events.PaymentSettledPayload)
-        ctx := context.Background()
-        ledgerSvc.RecordValidatedTransaction(ctx, payload.TaskSlug, "INBOUND_DONATION", payload.AmountSats, payload.PaymentHash)
-    })
+	escrowRepo := escrowRepo.NewEscrowRepository(db)
+	escrowSvc := escrowService.NewEscrowService(escrowRepo, trusteeRepo, ledgerRepo, eventBus)
+	escrowH := escrowHandler.NewEscrowHandler(escrowSvc)
 
-    eventBus.Subscribe(events.ThresholdReached, func(event events.Event) {
-        payload := event.Payload.(events.ThresholdReachedPayload)
-        ctx := context.Background()
-        escrowSvc.FinalizeAndBroadcastPayout(ctx, payload.TaskSlug)
-    })
+	eventBus.Subscribe(events.PaymentSettled, func(event events.Event) {
+		payload := event.Payload.(events.PaymentSettledPayload)
+		ctx := context.Background()
+		ledgerSvc.RecordValidatedTransaction(ctx, payload.TaskSlug, "INBOUND_DONATION", payload.AmountSats, payload.PaymentHash)
+	})
 
-    eventBus.Subscribe(events.TaskStatusChanged, func(event events.Event) {
-        payload := event.Payload.(events.TaskStatusChangedPayload)
-        if payload.NewStatus == "completed" {
-            ctx := context.Background()
-            ledgerSvc.RecordValidatedTransaction(ctx, payload.TaskSlug, "TASK_STATUS_COMPLETED", 0, payload.TaskSlug)
-        }
-    })
+	eventBus.Subscribe(events.TaskCreated, func(event events.Event) {
+		payload := event.Payload.(events.TaskCreatedPayload)
+		ctx := context.Background()
+		ledgerSvc.RecordValidatedTransaction(ctx, payload.TaskSlug, "TASK_CREATED", 0, payload.TaskSlug)
+	})
 
-    eventBus.Subscribe(events.FinancialStateChanged, func(event events.Event) {
-        payload := event.Payload.(events.FinancialStateChangedPayload)
-        ctx := context.Background()
-        if payload.NewState == "LIQUIDATING" || payload.NewState == "READY_FOR_PAYOUT" {
-            escrowSvc.FinalizeAndBroadcastPayout(ctx, payload.TaskSlug)
-        }
-    })
+	eventBus.Subscribe(events.ApplicationSubmitted, func(event events.Event) {
+		payload := event.Payload.(events.ApplicationSubmittedPayload)
+		ctx := context.Background()
+		ledgerSvc.RecordValidatedTransaction(ctx, payload.TaskSlug, "APPLICATION_SUBMITTED", 0, fmt.Sprintf("volunteer-%d", payload.VolunteerID))
+	})
 
-    router := gin.Default()
-    router.Use(middleware.ErrorHandler(), middleware.RateLimiter(), middleware.ValidationMiddleware())
-    router.Use(func(c *gin.Context) {
-        c.Header("Access-Control-Allow-Origin", "*")
-        c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-        c.Header("Access-Control-Allow-Headers", "Content-Type, Authorization")
-        if c.Request.Method == "OPTIONS" {
-            c.AbortWithStatus(204)
-            return
-        }
-        c.Next()
-    })
+	eventBus.Subscribe(events.SubmissionCreated, func(event events.Event) {
+		payload := event.Payload.(events.SubmissionCreatedPayload)
+		ctx := context.Background()
+		if err := taskSvc.TransitionVolunteerStatus(ctx, payload.TaskSlug, "submitted"); err != nil {
+			fmt.Printf("failed to transition task status on submission: %v\n", err)
+		}
+		ledgerSvc.RecordValidatedTransaction(ctx, payload.TaskSlug, "SUBMISSION_CREATED", 0, fmt.Sprintf("volunteer-%d", payload.VolunteerID))
+	})
 
-    router.GET("/health", func(c *gin.Context) {
-        c.JSON(200, gin.H{"status": "ok"})
-    })
+	eventBus.Subscribe(events.ThresholdReached, func(event events.Event) {
+		payload := event.Payload.(events.ThresholdReachedPayload)
+		ctx := context.Background()
+		escrowSvc.FinalizeAndBroadcastPayout(ctx, payload.TaskSlug)
+	})
 
-    api := router.Group("/api/v1")
-    {
-        auth := api.Group("/auth")
-        {
-            auth.POST("/register", authH.Register)
-            auth.POST("/signin", authH.SignIn)
-        }
+	eventBus.Subscribe(events.TaskStatusChanged, func(event events.Event) {
+		payload := event.Payload.(events.TaskStatusChangedPayload)
+		if payload.NewStatus == "completed" {
+			ctx := context.Background()
+			ledgerSvc.RecordValidatedTransaction(ctx, payload.TaskSlug, "TASK_STATUS_COMPLETED", 0, payload.TaskSlug)
+		}
+	})
 
-        protected := api.Group("")
-        protected.Use(authHandler.AuthMiddleware(authSvc))
-        {
-            protected.POST("/auth/signout", authH.SignOut)
+	eventBus.Subscribe(events.FinancialStateChanged, func(event events.Event) {
+		payload := event.Payload.(events.FinancialStateChangedPayload)
+		ctx := context.Background()
+		if payload.NewState == "LIQUIDATING" || payload.NewState == "READY_FOR_PAYOUT" {
+			escrowSvc.FinalizeAndBroadcastPayout(ctx, payload.TaskSlug)
+		}
+	})
 
-            tasks := protected.Group("/tasks")
-            {
-                tasks.GET("", taskH.ListTasks)
-                tasks.POST("", taskH.CreateTask)
-                tasks.GET(":slug", taskH.GetTask)
-                tasks.POST(":slug/apply", volunteerH.ApplyForTask)
-                tasks.POST(":slug/submissions", volunteerH.SubmitWork)
-                tasks.POST(":slug/trustees", trusteeH.RegisterTrusteeKeys)
-                tasks.POST(":slug/donate", lightningH.RequestDonationInvoice)
-            }
+	if listenerCtx != nil {
+		go lightningSvc.StartSettlementListener(listenerCtx)
+		go lightningSvc.StartInvoiceExpiryWorker(listenerCtx)
+	}
 
-            volunteers := protected.Group("/volunteers")
-            {
-                volunteers.GET("/profile", volunteerH.GetProfile)
-                volunteers.PUT("/profile", volunteerH.UpdateProfile)
-                volunteers.GET("/applications", volunteerH.GetApplications)
-                volunteers.GET("/submissions", volunteerH.GetSubmissions)
-                volunteers.GET("/payments", volunteerH.GetPayments)
-                volunteers.PUT("/payment-profile", volunteerH.UpdatePaymentProfile)
-                volunteers.GET("/reputation", volunteerH.GetReputation)
-            }
+	router := gin.Default()
+	router.Use(middleware.ErrorHandler(), middleware.RateLimiter(), middleware.ValidationMiddleware())
+	router.Use(func(c *gin.Context) {
+		c.Header("Access-Control-Allow-Origin", "*")
+		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		c.Header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		if c.Request.Method == "OPTIONS" {
+			c.AbortWithStatus(204)
+			return
+		}
+		c.Next()
+	})
 
-            trustees := protected.Group("/trustees")
-            {
-                trustees.GET("/payouts/:slug", escrowH.GetPayoutReviewManifest)
-                trustees.POST("/payouts/:slug/sign", escrowH.SubmitCoSignatures)
-            }
+	router.GET("/health", func(c *gin.Context) {
+		c.JSON(200, gin.H{"status": "ok"})
+	})
 
-            ledger := protected.Group("/ledger")
-            {
-                ledger.GET("/tasks/:slug", ledgerH.GetTaskBalance)
-                ledger.GET("/tasks/:slug/verify", ledgerH.VerifyChainIntegrity)
-            }
-        }
-    }
+	api := router.Group("/api/v1")
+	{
+		auth := api.Group("/auth")
+		{
+			auth.POST("/register", authH.Register)
+			auth.POST("/signin", authH.SignIn)
+		}
 
-    return router
+		protected := api.Group("")
+		protected.Use(authHandler.AuthMiddleware(authSvc))
+		{
+			protected.POST("/auth/signout", authH.SignOut)
+
+			tasks := protected.Group("/tasks")
+			{
+				tasks.GET("", taskH.ListTasks)
+				tasks.POST("", taskH.CreateTask)
+				tasks.GET(":slug", taskH.GetTask)
+				tasks.POST(":slug/apply", volunteerH.ApplyForTask)
+				tasks.POST(":slug/submissions", volunteerH.SubmitWork)
+				tasks.POST(":slug/trustees", trusteeH.RegisterTrusteeKeys)
+				tasks.POST(":slug/donate", lightningH.RequestDonationInvoice)
+			}
+
+			volunteers := protected.Group("/volunteers")
+			{
+				volunteers.GET("/profile", volunteerH.GetProfile)
+				volunteers.PUT("/profile", volunteerH.UpdateProfile)
+				volunteers.GET("/applications", volunteerH.GetApplications)
+				volunteers.GET("/submissions", volunteerH.GetSubmissions)
+				volunteers.GET("/payments", volunteerH.GetPayments)
+				volunteers.PUT("/payment-profile", volunteerH.UpdatePaymentProfile)
+				volunteers.GET("/reputation", volunteerH.GetReputation)
+			}
+
+			trustees := protected.Group("/trustees")
+			{
+				trustees.GET("/payouts/:slug", escrowH.GetPayoutReviewManifest)
+				trustees.POST("/payouts/:slug/sign", escrowH.SubmitCoSignatures)
+			}
+
+			ledger := protected.Group("/ledger")
+			{
+				ledger.GET("/tasks/:slug", ledgerH.GetTaskBalance)
+				ledger.GET("/tasks/:slug/verify", ledgerH.VerifyChainIntegrity)
+			}
+
+			lightningRoutes := protected.Group("/lightning")
+			{
+				lightningRoutes.GET("/invoices/status", lightningH.CheckInvoiceStatus)
+			}
+		}
+	}
+
+	return router
 }

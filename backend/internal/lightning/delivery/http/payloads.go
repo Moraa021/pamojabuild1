@@ -9,3 +9,11 @@ type DonationInvoiceResponse struct {
 	PaymentHash    string `json:"payment_hash"`    // Hex identifier string to poll settlement status
 	ExpiresAt      int64  `json:"expires_at"`      // Unix timestamp cutoff
 }
+
+type InvoiceStatusResponse struct {
+	PaymentHash string `json:"payment_hash"`
+	Status      string `json:"status"`
+	Settled     bool   `json:"settled"`
+	ExpiresAt   int64  `json:"expires_at,omitempty"`
+	SettledAt   int64  `json:"settled_at,omitempty"`
+}
