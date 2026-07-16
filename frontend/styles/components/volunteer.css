@@ -144,3 +144,100 @@
   color: var(--color-text-muted);
   padding: var(--space-16);
 }
+
+/* SUBMISSION UPLOADER */
+
+.submission-uploader { }
+
+.url-add-row {
+  display: flex;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.url-add-row__input {
+  flex: 1;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-sm);
+}
+
+.url-add-row__input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.url-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.url-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+}
+
+.url-item__link {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-xs);
+  color: var(--color-accent);
+}
+
+.url-item__remove {
+  color: var(--color-text-subtle);
+  font-size: var(--text-xs);
+  flex-shrink: 0;
+  transition: color var(--duration-fast);
+}
+
+.url-item__remove:hover { color: var(--color-error); }
+
+/* EVIDENCE GALLERY */
+
+.evidence-gallery { display: flex; flex-direction: column; gap: var(--space-5); }
+.evidence-gallery__empty { color: var(--color-text-muted); font-size: var(--text-sm); }
+
+.evidence-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+}
+
+.evidence-card__meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-3);
+}
+
+.evidence-card__date { font-size: var(--text-xs); color: var(--color-text-muted); }
+.evidence-card__description { color: var(--color-text-muted); font-size: var(--text-sm); margin-bottom: var(--space-4); }
+
+.evidence-card__urls { display: flex; flex-direction: column; gap: var(--space-3); }
+
+.evidence-card__img {
+  width: 100%;
+  max-height: 280px;
+  object-fit: cover;
+  border-radius: var(--radius-md);
+}
+
+.evidence-card__link {
+  font-size: var(--text-xs);
+  color: var(--color-accent);
+  word-break: break-all;
+}
