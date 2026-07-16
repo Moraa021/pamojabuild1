@@ -65,3 +65,82 @@
 .rep--trusted  { color: var(--color-success); }
 .rep--expert   { color: var(--color-warning); }
 .rep--elite    { color: var(--color-accent); box-shadow: var(--shadow-accent); }
+
+/* APPLICATION STATUS BADGE */
+
+.app-badge {
+  display: inline-flex;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.app-badge--pending  { background: var(--color-warning-bg); color: var(--color-warning); }
+.app-badge--approved { background: var(--color-success-bg); color: var(--color-success); }
+.app-badge--rejected { background: var(--color-error-bg);   color: var(--color-error);   }
+.app-badge--unknown  { background: var(--color-surface-2);  color: var(--color-text-muted); }
+
+/* TASK FILTER */
+
+.task-filter {
+  display: flex;
+  gap: var(--space-4);
+  align-items: flex-end;
+  flex-wrap: wrap;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4) var(--space-5);
+  margin-bottom: var(--space-6);
+}
+
+.task-filter__group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  flex: 1;
+  min-width: 140px;
+}
+
+.task-filter__label {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.task-filter__select,
+.task-filter__input {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+  transition: border-color var(--duration-fast);
+}
+
+.task-filter__select:focus,
+.task-filter__input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+/* TASK GRID */
+
+.task-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: var(--space-5);
+}
+
+.task-grid__empty {
+  grid-column: 1 / -1;
+  text-align: center;
+  color: var(--color-text-muted);
+  padding: var(--space-16);
+}
