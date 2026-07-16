@@ -338,3 +338,104 @@
   font-size: var(--text-xl);
   font-weight: var(--weight-bold);
 }
+
+/* PAYMENT TABS */
+
+.payment-tabs {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-5);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.payment-tab {
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--color-text-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  transition: all var(--duration-fast);
+}
+
+.payment-tab:hover { color: var(--color-text); background: var(--color-surface); }
+.payment-tab--active { color: var(--color-accent); border-color: var(--color-accent); background: var(--color-accent-glow); }
+
+/* VERIFICATION TRACKER */
+
+.verification-tracker { margin-bottom: var(--space-6); }
+
+.verification-tracker__title {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-4);
+}
+
+.vstep-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  position: relative;
+}
+
+.vstep {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+  position: relative;
+}
+
+.vstep + .vstep::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 11px;
+  width: 2px;
+  height: var(--space-3);
+  background: var(--color-border);
+}
+
+.vstep--done + .vstep::before { background: var(--color-success); }
+
+.vstep__indicator {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--color-surface-2);
+  border: 2px solid var(--color-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+  flex-shrink: 0;
+  color: var(--color-text-subtle);
+  transition: all var(--duration-normal);
+}
+
+.vstep--done .vstep__indicator {
+  background: var(--color-success);
+  border-color: var(--color-success);
+  color: #000;
+}
+
+.vstep--active .vstep__indicator {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+  box-shadow: 0 0 8px var(--color-accent-glow);
+}
+
+.vstep__label {
+  font-size: var(--text-sm);
+  color: var(--color-text-subtle);
+}
+
+.vstep--done   .vstep__label { color: var(--color-text); }
+.vstep--active .vstep__label { color: var(--color-accent); font-weight: var(--weight-medium); }
