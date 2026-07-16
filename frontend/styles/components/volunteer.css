@@ -439,3 +439,111 @@
 
 .vstep--done   .vstep__label { color: var(--color-text); }
 .vstep--active .vstep__label { color: var(--color-accent); font-weight: var(--weight-medium); }
+
+/* VOLUNTEER DASHBOARD */
+
+.vol-dashboard { padding-block: var(--space-6); }
+
+.dash-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.vol-dashboard__grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-6);
+  margin-top: var(--space-8);
+}
+
+@media (min-width: 768px) {
+  .vol-dashboard__grid { grid-template-columns: 1fr 1fr; }
+}
+
+.dash-section {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+}
+
+.dash-section__title {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-4);
+}
+
+.dash-app-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.dash-app-row:last-child { border-bottom: none; }
+
+.dash-app-row__date {
+  font-size: var(--text-xs);
+  color: var(--color-text-subtle);
+  display: block;
+}
+
+.dash-actions { display: flex; flex-direction: column; gap: var(--space-3); }
+
+/* APPLICATION HISTORY */
+
+.app-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4) 0;
+  border-bottom: 1px solid var(--color-border);
+  flex-wrap: wrap;
+}
+
+.app-row:last-child { border-bottom: none; }
+.app-row__message { font-size: var(--text-sm); color: var(--color-text-muted); margin-top: var(--space-1); }
+.app-row__date    { font-size: var(--text-xs); color: var(--color-text-subtle); margin-top: var(--space-1); }
+
+/* VOLUNTEER PROFILE */
+
+.vol-profile { padding-block: var(--space-6); }
+
+.vol-profile__layout {
+  display: grid;
+  gap: var(--space-8);
+}
+
+@media (min-width: 768px) {
+  .vol-profile__layout { grid-template-columns: 280px 1fr; }
+}
+
+.profile-avatar {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--color-accent), var(--color-accent-dim));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-3xl);
+  font-weight: var(--weight-bold);
+  color: #000;
+  margin-bottom: var(--space-4);
+}
+
+.profile-name {
+  font-size: var(--text-xl);
+  font-weight: var(--weight-bold);
+  margin-bottom: var(--space-2);
+}
+
+.profile-bio { font-size: var(--text-sm); margin-bottom: var(--space-4); }
