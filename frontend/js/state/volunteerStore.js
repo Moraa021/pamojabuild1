@@ -171,7 +171,9 @@ export const taskBrowserActions = {
   async fetchTasks() {
     taskBrowserStore.setState({ loading: true, error: null });
     try {
-      const tasks = await volunteerApi.listTasks();
+      const data = await volunteerApi.listTasks();
+      // Backend returns { tasks: [...] } — unwrap the array
+      const tasks = Array.isArray(data) ? data : (data?.tasks ?? []);
       taskBrowserStore.setState({ tasks, loading: false });
       return tasks;
     } catch (err) {
@@ -188,7 +190,8 @@ export const taskBrowserActions = {
 
   getFilteredTasks() {
     const { tasks, filters } = taskBrowserStore.state;
-    return tasks.filter(t => {
+    const list = Array.isArray(tasks) ? tasks : [];
+    return list.filter(t => {
       if (filters.category && t.category !== filters.category) return false;
       if (filters.region   && !t.region.toLowerCase().includes(filters.region.toLowerCase())) return false;
       if (filters.status   && t.status !== filters.status) return false;

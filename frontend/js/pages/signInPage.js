@@ -2,7 +2,7 @@ import { ENV }           from '../config/env.js';
 import { APIErrorDisplay } from '../components/APIErrorDisplay.js';
 import { authActions }   from '../state/authStore.js';
 import { Toast }         from '../components/Toast.js';
-import { navigate }      from '../utils/utils.js';
+import { navigate, isValidPhone } from '../utils/utils.js';
 
 const AUTH_SIGNIN_URL = `${ENV.API_BASE_URL}/api/${ENV.API_VERSION}/auth/signin`;
 
@@ -18,9 +18,9 @@ export function renderSignInPage(container) {
 
         <form id="signin-form" novalidate aria-label="Sign in form">
           <div class="form-field">
-            <label for="field-email">Email <span aria-hidden="true">*</span></label>
-            <input id="field-email" name="email" type="email" required
-                   autocomplete="email" placeholder="you@example.com" />
+            <label for="field-phone">Phone number <span aria-hidden="true">*</span></label>
+            <input id="field-phone" name="phone_number" type="tel" required
+                   autocomplete="tel" placeholder="+254 700 000 000" />
             <div class="form-field__error" role="alert" aria-live="polite"></div>
           </div>
 
@@ -52,13 +52,13 @@ export function renderSignInPage(container) {
     e.preventDefault();
     errDisplay.clear();
 
-    const data     = new FormData(form);
-    const email    = data.get('email').trim();
-    const password = data.get('password');
+    const data         = new FormData(form);
+    const phone_number = data.get('phone_number').trim();
+    const password     = data.get('password');
 
     let valid = true;
-    if (!email) {
-      setFieldError(form, 'email', 'Email is required.');
+    if (!phone_number || !isValidPhone(phone_number)) {
+      setFieldError(form, 'phone_number', 'A valid phone number is required.');
       valid = false;
     }
     if (!password) {
@@ -73,7 +73,7 @@ export function renderSignInPage(container) {
       const res = await fetch(AUTH_SIGNIN_URL, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ email, password }),
+        body:    JSON.stringify({ phone_number, password }),
       });
 
       if (!res.ok) {

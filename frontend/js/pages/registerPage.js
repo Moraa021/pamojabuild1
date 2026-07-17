@@ -2,7 +2,7 @@ import { ENV }             from '../config/env.js';
 import { APIErrorDisplay } from '../components/APIErrorDisplay.js';
 import { authActions }     from '../state/authStore.js';
 import { Toast }           from '../components/Toast.js';
-import { navigate, isValidEmail } from '../utils/utils.js';
+import { navigate, isValidPhone } from '../utils/utils.js';
 import { ROLES }           from '../config/roles.js';
 
 const AUTH_REGISTER_URL = `${ENV.API_BASE_URL}/api/${ENV.API_VERSION}/auth/register`;
@@ -27,9 +27,9 @@ export function renderRegisterPage(container) {
           </div>
 
           <div class="form-field">
-            <label for="field-email">Email <span aria-hidden="true">*</span></label>
-            <input id="field-email" name="email" type="email" required
-                   autocomplete="email" placeholder="you@example.com" />
+            <label for="field-phone">Phone number <span aria-hidden="true">*</span></label>
+            <input id="field-phone" name="phone_number" type="tel" required
+                   autocomplete="tel" placeholder="+254 700 000 000" />
             <div class="form-field__error" role="alert" aria-live="polite"></div>
           </div>
 
@@ -82,7 +82,7 @@ export function renderRegisterPage(container) {
 
     const data            = new FormData(form);
     const display_name    = data.get('display_name').trim();
-    const email           = data.get('email').trim();
+    const phone_number    = data.get('phone_number').trim();
     const password        = data.get('password');
     const confirmPassword = data.get('confirm_password');
     const role            = data.get('role');
@@ -93,8 +93,8 @@ export function renderRegisterPage(container) {
       setFieldError(form, 'display_name', 'Display name is required.');
       valid = false;
     }
-    if (!email || !isValidEmail(email)) {
-      setFieldError(form, 'email', 'A valid email address is required.');
+    if (!phone_number || !isValidPhone(phone_number)) {
+      setFieldError(form, 'phone_number', 'A valid phone number is required (e.g. +254 700 000 000).');
       valid = false;
     }
     if (!password || password.length < 8) {
@@ -117,7 +117,7 @@ export function renderRegisterPage(container) {
       const res = await fetch(AUTH_REGISTER_URL, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ display_name, email, password, role }),
+        body:    JSON.stringify({ display_name, phone_number, password, role }),
       });
 
       if (!res.ok) {

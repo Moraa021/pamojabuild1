@@ -30,10 +30,9 @@ export async function renderCampaignsPage(container) {
 
   let tasks = [];
   try {
-    tasks = await taskApi.list?.() || await fetch(
-      `${(await import('../config/env.js')).ENV.API_BASE_URL}/api/v1/tasks`,
-      { headers: { Authorization: `Bearer ${authStore.state.token}` } }
-    ).then(r => r.json());
+    const data = await taskApi.list();
+    // Backend returns { tasks: [...] } — unwrap the array
+    tasks = Array.isArray(data) ? data : (data?.tasks ?? []);
     spinner.remove();
   } catch (err) {
     spinner.remove();

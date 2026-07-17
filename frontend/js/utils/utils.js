@@ -31,6 +31,10 @@ export function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
+export function isValidPhone(phone) {
+  return /^\+?[0-9]{7,15}$/.test(phone.replace(/[\s\-().]/g, ''));
+}
+
 export function isValidXpub(xpub) {
   return typeof xpub === 'string' && /^xpub[A-Za-z0-9]{107}$/.test(xpub);
 }
