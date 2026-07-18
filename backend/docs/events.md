@@ -212,6 +212,7 @@ type FinancialStateChangedPayload struct {
     TaskSlug string
     OldState string
     NewState string
+    Version  int64
 }
 ```
 
@@ -225,7 +226,9 @@ Published when a task's financial state transitions.
 ```go
 type TaskStatusChangedPayload struct {
     TaskSlug  string
+    OldStatus string
     NewStatus string
+    Version   int64
 }
 ```
 
@@ -240,7 +243,10 @@ Most event publishing and consumption is wired in `cmd/app/router.go` and servic
 - `escrow` publishes `ThresholdReached`
 - `lightning` publishes `PaymentSettled`
 
-The router currently subscribes to these events to update the ledger and trigger payout orchestration.
+The router uses selected events for ledger scaffolding. Task state changes no
+longer invoke payout finalization: financial progression is owned by explicit
+state-machine boundaries, and later payout services must request legal,
+idempotent transitions.
 
 ## Notes
 

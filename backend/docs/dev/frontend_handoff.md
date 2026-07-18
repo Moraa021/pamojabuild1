@@ -140,6 +140,8 @@ Task create/detail responses are explicit snake_case objects:
   "location_detail": "Near the market",
   "status": "open",
   "financial_state": "ACTIVE",
+  "work_state_version": 1,
+  "financial_state_version": 1,
   "goal_sats": 500000,
   "max_volunteers": 3,
   "volunteer_mode": "approval_required",
@@ -196,9 +198,8 @@ application now receives `403`, not `400`.
 Use that registered route and unwrap `submissions`. The current frontend call
 to `GET /tasks/:slug/submissions` is not implemented. Filter the authenticated
 account's returned list by `task_slug` if the current page needs one task. The
-current `POST /tasks/:slug/complete` caller also targets no backend route and
-must not be invoked; completion belongs to the later state-machine/workflow
-steps.
+current `POST /tasks/:slug/complete` caller still targets no backend route;
+replace it with the state actions described in step 4 below.
 
 `GET /api/v1/volunteers/payments` now returns actual payment records:
 
@@ -278,3 +279,112 @@ the authenticated task trustee relationship. These payout endpoints remain
 non-production scaffolds: the backend does not yet build a PSBT, verify either
 signature, or move funds. Do not present a successful response as a completed
 or cryptographically approved payout.
+
+## 4. Task state machines
+
+Task responses now include `work_state_version` and
+`financial_state_version`. They are monotonic state revision numbers. Use them
+to notice stale display state, but do not send them back to choose or force a
+transition.
+
+The work lifecycle is:
+
+```text
+open -> in_progress -> pending_verification -> completed
+```
+
+The fundraising goal is a soft target. Reaching `goal_sats` does not start the
+task and does not stop donations. Donations may exceed the target while
+`financial_state` remains `ACTIVE`.
+
+State actions use the authenticated cookie account as the actor. Never send an
+actor, creator, volunteer, trustee, signer, current state, or target state in
+JSON. Each retryable action requires a client-generated `Idempotency-Key`
+header containing letters, digits, `.`, `_`, `:`, or `-`:
+
+```http
+POST /api/v1/tasks/:slug/start
+Idempotency-Key: <unique key, maximum 128 characters>
+Content-Type: application/json
+
+{}
+```
+
+This creator-only action requires at least one approved volunteer and moves
+`open` to `in_progress`.
+
+```http
+POST /api/v1/tasks/:slug/submit-for-verification
+Idempotency-Key: <unique key, maximum 128 characters>
+Content-Type: application/json
+
+{ "reason": "All approved volunteers have submitted evidence." }
+```
+
+This creator-only action requires every approved volunteer to have at least
+one submission and moves `in_progress` to `pending_verification`. Replace the
+old frontend `POST /tasks/:slug/complete` call with this action where the
+creator is requesting review; submitting evidence alone never changes the
+task-wide state.
+
+```http
+POST /api/v1/tasks/:slug/verify
+Idempotency-Key: <unique key, maximum 118 characters>
+Content-Type: application/json
+
+{}
+```
+
+This action requires a task trustee who is neither the creator nor a volunteer
+on that task. It atomically moves work to `completed` and financial state from
+`ACTIVE` to `LIQUIDATING`; new donation invoices then return `409`. Trustee
+nomination/acceptance is step 5, so do not expose this control as a finished
+production verification experience while trustee registration remains a
+self-claim scaffold.
+
+`reason` is optional on all three actions and is limited to 500 characters.
+Send `{}` when it is omitted. A successful action returns:
+
+```json
+{
+  "transitions": [
+    {
+      "id": 18,
+      "state_kind": "work",
+      "from_state": "open",
+      "to_state": "in_progress",
+      "version": 2,
+      "actor_user_id": 12,
+      "reason": "creator started task work",
+      "created_at": "2026-07-18T19:40:00Z"
+    }
+  ],
+  "replayed": false
+}
+```
+
+Retrying the same action with the same key and body returns `200` with
+`replayed: true`. Reusing a key for different action data, using a stale/illegal
+transition, or failing readiness checks returns `409`. A non-owner or
+non-independent verifier receives `403`.
+
+State history is available newest first:
+
+```http
+GET /api/v1/tasks/:slug/state-history?state_kind=work&page=1&page_size=20
+```
+
+`state_kind` is optional and accepts `work` or `financial`. The response uses
+the standard `pagination` object and a `transitions` array. Initial rows have
+`from_state: null`; they are creation/migration baselines, not user actions.
+
+The financial lifecycle exposed in task reads/history is:
+
+```text
+ACTIVE -> LIQUIDATING -> READY_FOR_PAYOUT -> PAYOUT_PROCESSING -> ARCHIVED
+```
+
+Only the completion boundary is currently connected. Later backend payout
+services—not browser callers—will advance the remaining financial states.
+`SYSTEM_LOCKDOWN` is reserved in the schema but has no executable transition
+until entry, recovery, and authorization rules are approved.

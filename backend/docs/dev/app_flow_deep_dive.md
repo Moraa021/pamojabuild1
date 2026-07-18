@@ -62,7 +62,7 @@ These lifecycles should coordinate, but they are not the same thing.
 |---|---|---|
 | Registration and sign-in | Hardened foundation | Accounts are general, phone numbers are canonicalized, passwords are hashed, opaque server-side sessions are revocable per device and delivered in HttpOnly cookies, and `/auth/me` restores display-safe account state. |
 | API contracts | Implemented foundation | Registered routes use explicit snake_case DTOs, strict JSON decoding, one safe error envelope, service validation, documented cookie auth, and intentional HTTP status distinctions. |
-| Task creation/list/detail | Basic implementation with stable contracts | Tasks can be stored and fetched through explicit DTOs and paginated filters. State changes are not strictly controlled. |
+| Task creation/list/detail | Implemented foundation | Tasks use explicit DTOs and paginated filters. Work and financial state values, versions, legal transitions, history, and idempotent concurrency are enforced. |
 | Volunteer application | Partial | A volunteer can apply. No API exists for a creator/admin to approve or reject the application. |
 | Work submission | Partial | An approved volunteer can submit evidence. Approval is currently only practical through direct DB changes/tests. |
 | Lightning invoice creation | Implemented foundation | Real gRPC and REST LND clients exist, invoices are saved, and status can be queried. |
@@ -350,7 +350,7 @@ Endpoint: `POST /api/v1/tasks`
 1. Auth middleware validates the server-side cookie session and stores the signed-in account ID in the request context.
 2. [task handler](../../internal/task/delivery/http/handler.go) binds the JSON and uses that authenticated ID as `creator_id`; JSON cannot choose a different owner.
 3. [task service](../../internal/task/service/task_service.go) turns the title into a URL slug, sets `status = open`, and sets `financial_state = ACTIVE`.
-4. [task repository](../../internal/task/repository/postgres.go) inserts a row into `tasks`.
+4. [task repository](../../internal/task/repository/postgres.go) inserts the task and its initial work/financial history rows in one transaction.
 5. The service publishes `task.created`.
 6. A router subscriber records a zero-value `TASK_CREATED` row in `ledger_entries`.
 
@@ -363,7 +363,8 @@ Important `tasks` columns:
 | generated `slug` | `slug` | Stable URL/business identifier used by most related tables. |
 | `status` | `status` | Volunteer/work lifecycle. Starts as `open`. |
 | `financial_state` | `financial_state` | Donation/payout lifecycle. Starts as `ACTIVE`. |
-| `goal_sats` | `goal_sats` | Fundraising target; no backend threshold behavior currently uses it. |
+| `work_state_version`, `financial_state_version` | same | Monotonic revisions used for conditional state updates and stale-write protection. |
+| `goal_sats` | `goal_sats` | Soft fundraising target. It neither starts work nor caps donations. |
 | `max_volunteers` | `max_volunteers` | Intended capacity; currently not enforced. |
 | `volunteer_mode` | `volunteer_mode` | `open` or `approval_required`; backend application rules currently do not distinguish them. |
 
@@ -380,7 +381,7 @@ names. Duplicate title-derived slugs return `409 Conflict`.
 
 - Decide who is allowed to create campaigns.
 - Create trustee onboarding records/invitations as part of a defined setup workflow.
-- Add creator/admin endpoints for managing applications and task progress.
+- Add creator endpoints for managing applications; task progress actions are now registered.
 
 ## Flow 2: Browsing and viewing tasks
 
@@ -540,7 +541,7 @@ The intended implementation should:
 - define whether `open` mode auto-approves until capacity is full;
 - prevent applying to closed/nonexistent tasks;
 - publish typed approval/rejection events;
-- transition the task work status when the first volunteer starts.
+- leave the task `open` until its creator explicitly starts work.
 
 ### Submitting work
 
@@ -562,20 +563,23 @@ Backend steps:
 3. require application status `approved`;
 4. insert `task_submissions` with `status = submitted`;
 5. publish `submission.created`;
-6. router subscriber sets `tasks.status` to the literal value `submitted`;
-7. append a zero-amount `SUBMISSION_CREATED` ledger entry.
+6. append a zero-amount `SUBMISSION_CREATED` ledger entry.
+
+Submitting evidence does not change the task-wide work state. Once every
+approved volunteer has at least one submission, the task creator may call
+`POST /tasks/:slug/submit-for-verification`.
 
 Schema: [initial PostgreSQL migration](../../db/migrations/20260718132603_initial_schema.up.sql)
 
-### Current submission mismatches
+### Current submission limitations
 
-- The documented/frontend task states are `open -> in_progress -> pending_verification -> completed`, but the backend event sets the task to `submitted`, which the frontend state maps do not recognize.
-- There is no route that changes a task to `in_progress`.
+- The work lifecycle is now `open -> in_progress -> pending_verification -> completed`.
+- `POST /tasks/:slug/start` lets the creator begin work after at least one approved volunteer exists.
+- `POST /tasks/:slug/submit-for-verification` lets the creator request review only after every approved volunteer has submitted.
+- `POST /tasks/:slug/verify` lets an independent task trustee verify the work; it also closes donations atomically.
 - There is no registered route to review/approve/verify a submission.
 - The frontend calls `GET /tasks/:slug/submissions`; no such GET route is registered. The backend only offers the authenticated volunteer's full submission list at `GET /volunteers/submissions`.
-- The frontend calls `POST /tasks/:slug/complete`; no route is registered.
-- The `UpdateTaskStatus` handler exists but is not registered.
-- Status transition methods accept any string and do not check the old state or affected row count.
+- The old frontend `POST /tasks/:slug/complete` call must be replaced with the creator's submit-for-verification action.
 - The repository method meant to satisfy both application and submission `UpdateStatus` interfaces updates `task_applications`; its separate submission update method has a different name. Future submission review code could update the wrong table.
 - Evidence is only URL text. There is no upload storage, content validation, malware handling, access control, or immutable evidence hash.
 
@@ -616,16 +620,21 @@ It also treats `LIQUIDATING` as “payment broadcast” after `READY_FOR_PAYOUT`
 
 ### Current database state fields
 
-There is no `task_states` history table despite the workflow mentioning one. Current state is stored directly in several tables:
+Current state is stored on the owning rows, while every task state change is
+also appended to `task_state_transitions`:
 
 ```text
 tasks.status
-    open / submitted in actual backend writes
-    frontend expects open / in_progress / pending_verification / completed
+    open -> in_progress -> pending_verification -> completed
 
 tasks.financial_state
-    starts ACTIVE
-    service can write any string, but no route currently exposes it
+    ACTIVE -> LIQUIDATING -> READY_FOR_PAYOUT
+    -> PAYOUT_PROCESSING -> ARCHIVED
+    SYSTEM_LOCKDOWN is reserved but has no executable recovery rules
+
+task_state_transitions
+    immutable work/financial history with old/new state, version,
+    backend-derived actor, reason, retry key, and timestamp
 
 task_applications.status
     pending initially; no app approval route
@@ -642,30 +651,29 @@ volunteer_payments.status
     table exists; payout flow does not populate it
 ```
 
-### Intended work lifecycle
-
-A reasonable strict version, to confirm with product requirements, is:
+### Enforced work lifecycle
 
 ```text
-OPEN
-  -> IN_PROGRESS
-  -> PENDING_VERIFICATION
-  -> COMPLETED
+open
+  -> in_progress
+  -> pending_verification
+  -> completed
 ```
 
-Each transition needs:
+The implemented transition rules are:
 
-- allowed current states;
-- authorized actor;
-- required evidence/conditions;
-- one database transaction;
-- idempotency behavior;
-- failure and recovery behavior;
-- an audit/event record.
+- `open -> in_progress`: the creator acts explicitly, with at least one approved volunteer;
+- `in_progress -> pending_verification`: the creator acts after every approved volunteer has submitted;
+- `pending_verification -> completed`: a task trustee acts, and that account must be neither creator nor volunteer for the task.
+
+Each API action requires an `Idempotency-Key`. The repository locks the task
+row, checks the expected state and version, changes current state, and appends
+history in the same transaction. Exact retries replay the original result;
+stale transitions or key reuse with different data return `409`.
 
 For multiple volunteers, task-wide state alone is not enough. You may need assignments with their own statuses so one volunteer's submission does not change the entire task incorrectly.
 
-### Intended money lifecycle
+### Enforced money-state boundary
 
 From `workflow.md`:
 
@@ -685,9 +693,20 @@ Plain language:
 - `PAYOUT_PROCESSING`: threshold has been reached; execute exactly that approved payout once.
 - `ARCHIVED`: payout is confirmed, balances reconcile to zero, and the task is terminal.
 
-The architecture also mentions `SYSTEM_LOCKDOWN`, a useful emergency state, but its entry/exit rules are undefined.
+The database constrains these values and the task service permits only the
+linear predecessor-to-successor transitions. Browser callers cannot select a
+financial target state. Independent work verification atomically changes
+`pending_verification -> completed` and `ACTIVE -> LIQUIDATING`, which makes
+the existing donation service reject new invoices.
 
-The actual backend does not enforce these transitions. Worse, router event wiring calls payout finalization on both `LIQUIDATING` and `READY_FOR_PAYOUT`, before the intended signing stage.
+The remaining financial transitions are internal boundaries for later
+liquidation/payout services and are not yet triggered. The old event subscriber
+that invoked payout finalization merely on entering `LIQUIDATING` or
+`READY_FOR_PAYOUT` has been removed.
+
+The architecture also mentions `SYSTEM_LOCKDOWN`. It remains a constrained
+vocabulary value, but the service rejects attempts to enter it until approved
+entry, authorization, and recovery rules exist.
 
 ## Flow 5: Who can be a trustee and how assignment works
 
@@ -989,8 +1008,11 @@ Failures need explicit resumable states. If L1 broadcasts but L2 fails, retry on
 | Browse/detail | task pages/stores | `GET /tasks*` | task handler/service/repo | `tasks` |
 | Apply | volunteer detail modal | `POST /tasks/:slug/apply` | volunteer application service/repo | `task_applications`, `ledger_entries` |
 | Approve application | No working UI/API | Not registered | Repository capability only | `task_applications` |
-| Submit work | submission page | `POST /tasks/:slug/submissions` | submission service/repo | `task_submissions`, `tasks`, `ledger_entries` |
-| Review submission/complete | UI calls nonexistent routes | Not registered | Not implemented | Intended `task_submissions`, `tasks` |
+| Start work | Frontend integration required | `POST /tasks/:slug/start` | task state service/repo | `tasks`, `task_state_transitions` |
+| Submit work | submission page | `POST /tasks/:slug/submissions` | submission service/repo | `task_submissions`, `ledger_entries` |
+| Request verification | Frontend integration required | `POST /tasks/:slug/submit-for-verification` | task state service/repo | `tasks`, `task_state_transitions` |
+| Verify work | Frontend integration required | `POST /tasks/:slug/verify` | task state service/repo | `tasks`, `task_state_transitions` |
+| View state history | Frontend integration required | `GET /tasks/:slug/state-history` | task state service/repo | `task_state_transitions` |
 | Create donation invoice | donation page/store | `POST /tasks/:slug/donate` | Lightning service/LND/repo | `lightning_invoices` |
 | Confirm donation | UI missing polling | `GET /lightning/invoices/status` exists | LND listener + event subscriber | `lightning_invoices`, `lightning_sync_state`, `ledger_entries` |
 | Register trustee keys | trustee page/store | `POST /tasks/:slug/trustees` | trustee service/repo | `trustee_keys` |
@@ -1006,7 +1028,8 @@ Failures need explicit resumable states. If L1 broadcasts but L2 fails, retry on
 |---|---|---|
 | `users` | General login identity, password hash, display name, and global admin flag | Formal admin promotion/removal workflow is not implemented. |
 | `user_sessions` | SHA-256 hashes of active/revoked per-device login sessions and their expiries | Cleanup, device labels, “sign out all,” and session-management UI are not implemented. |
-| `tasks` | Campaign details plus work and financial current states | Creation input is validated, but state transitions/history and payout linkage remain loose or missing. |
+| `tasks` | Campaign details plus constrained work/financial current states and monotonic versions | Payout linkage and emergency recovery policy remain missing. |
+| `task_state_transitions` | Immutable, paginated state audit history and idempotency records | Actor identity for later internal financial automation may be null by design; durable event delivery remains separate work. |
 | `volunteer_profiles` | Bio, skills, payout addresses, reputation totals | Auto-created with the account; partial updates overwrite unrelated values. |
 | `task_applications` | Volunteer requests to join tasks | Unique per task/account and conflict-guarded against trustees; no approval API; capacity rules missing. |
 | `task_submissions` | Work descriptions and evidence URL arrays | No review API; weak evidence model; multiple-submission policy unclear. |
@@ -1042,6 +1065,7 @@ Tables still needed or needing redesign for later phases likely include:
 - LND TLS and macaroon configuration;
 - unique Lightning payment hash;
 - conditional/idempotent settlement handling;
+- authorized, conditional, idempotent task transitions with row locking, version checks, and immutable history;
 - restart settlement cursor;
 - HMAC-chained ledger and constant-time comparison;
 - task-scoped trustee slot primary key;
@@ -1054,7 +1078,7 @@ Tables still needed or needing redesign for later phases likely include:
 - correct signature verification;
 - PSBT parsing and signature validation;
 - xpub/network/ownership validation;
-- strict state machines and conditional transitions;
+- approved `SYSTEM_LOCKDOWN` entry and recovery rules;
 - durable event delivery and atomic ledger integration;
 - multi-instance-safe ledger append;
 - reliable audit logs and independent checkpoints;
@@ -1072,8 +1096,8 @@ Tables still needed or needing redesign for later phases likely include:
 
 1. Complete frontend integration with general accounts, credentialed cookie sessions, and `/auth/me`.
 2. Implement creator application review; the application request/response contract is now standardized.
-3. Define and enforce the work lifecycle; register only the intended transition routes.
-4. Align frontend submission/history/complete calls with real backend endpoints.
+3. Integrate the frontend with the enforced work lifecycle and its idempotency headers.
+4. Align frontend submission/history/complete displays with the registered state endpoints.
 5. Make task browsing/donation publicity an explicit product decision.
 
 ### Priority 1: finish safe incoming-money accounting
@@ -1120,6 +1144,15 @@ If time is short, read in this order:
 
 PamojaBuild currently has a promising modular scaffold and a meaningful Lightning ingestion foundation. The code can create and track Lightning invoices, recover settlement listening after restart, and credit an HMAC-chained task ledger once per normal settlement path.
 
-The rest of the user journey is much less complete. Task status transitions, volunteer approval, trustee selection, on-chain vault creation, swaps, PSBTs, cryptographic payout approval, payout execution, and final reconciliation are not finished. Some screens make these features look more complete than they are because they are wired to placeholder responses or nonexistent endpoints.
+The rest of the user journey is much less complete. Volunteer approval, trustee
+selection/onboarding, on-chain vault creation, swaps, PSBTs, cryptographic
+payout approval, payout execution, and final reconciliation are not finished.
+Some screens make these features look more complete than they are because they
+are wired to placeholder responses or nonexistent endpoints.
 
-The safest next move is not to start by broadcasting payouts. First make identity/authorization and the two task lifecycles coherent. Then harden incoming accounting. After that, freeze the trustee/vault data model, build escrow address derivation, build a standalone PSBT/signature engine, and only then connect them through one idempotent payout orchestrator.
+The next dependency is trustworthy trustee nomination and acceptance; the
+state machine currently recognizes the existing task-trustee relationship, but
+that relationship is still created through an unsafe self-claim scaffold.
+After trustee and volunteer workflows, harden incoming accounting, freeze the
+vault/payout data model, build escrow and PSBT engines, and only then connect
+them through one idempotent payout orchestrator.
