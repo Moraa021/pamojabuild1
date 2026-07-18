@@ -55,6 +55,11 @@ migrate-down:
 migrate-version:
 	go run ./cmd/migrate version
 
+.PHONY: migration-create
+migration-create:
+	@test -n "$(NAME)" || (echo "NAME is required, for example: make migration-create NAME=add_task_states" && exit 1)
+	migrate create -ext sql -dir db/migrations $(NAME)
+
 .PHONY: seed
 seed:
 	go run ./cmd/seed

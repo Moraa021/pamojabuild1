@@ -26,7 +26,20 @@ go run ./cmd/migrate down 1
 go run ./cmd/migrate force <version>
 ```
 
-Every new schema change must add matching `<version>_<name>.up.sql` and `<version>_<name>.down.sql` files under `db/migrations`.
+Migration versions use a 14-digit UTC timestamp (`YYYYMMDDHHMMSS`) so independently created team migrations are unlikely to collide. Create a matching up/down pair from `backend/` with:
+
+```bash
+make migration-create NAME=add_example_table
+```
+
+This calls the `golang-migrate` CLI and produces:
+
+```text
+db/migrations/<UTC timestamp>_add_example_table.up.sql
+db/migrations/<UTC timestamp>_add_example_table.down.sql
+```
+
+Do not use `-seq` or manually invent a sequence number. If two migrations still receive the same timestamp, regenerate one before committing.
 
 ## Test PostgreSQL repositories
 

@@ -18,6 +18,10 @@ migrate:
 migrate-down:
 	cd backend && go run ./cmd/migrate down 1
 
+migration-create:
+	@test -n "$(NAME)" || (echo "NAME is required, for example: make migration-create NAME=add_task_states" && exit 1)
+	cd backend && migrate create -ext sql -dir db/migrations $(NAME)
+
 db-setup:
 	createdb pamoja
 	cd backend && go run ./cmd/migrate up

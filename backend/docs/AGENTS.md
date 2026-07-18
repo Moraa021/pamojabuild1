@@ -25,6 +25,7 @@ Treat PamojaBuild as production software for real users and real funds. Do not w
 
 - PostgreSQL is the only supported application database. Do not add SQLite dependencies, SQL dialects, fallback behavior, or SQLite-backed repository tests.
 - Use `golang-migrate` for versioned database migrations.
+- Name migration versions with 14-digit UTC timestamps (`YYYYMMDDHHMMSS`), not team-wide sequence numbers. Use `make migration-create NAME=<description>` to create paired files.
 - Every schema change must have explicit up and down migrations unless a documented, reviewed safety reason makes rollback impossible.
 - Run migrations through a separate deployment command. The API server must not automatically apply migrations during startup.
 - Do not build new schema work on the existing legacy SQLite-oriented migrations. Replace them with a clean PostgreSQL migration baseline during the database-standardization implementation unit.

@@ -215,7 +215,7 @@ The event bus is in memory and calls subscribers synchronously. Its history disa
 
 PostgreSQL is the only application database. `DATABASE_URL` is required and must use a `postgres://` or `postgresql://` URL. The API server connects to the existing schema but never applies DDL during startup.
 
-Schema changes use paired `golang-migrate` files. The current clean baseline is [000001_initial_schema.up.sql](../../db/migrations/000001_initial_schema.up.sql), with its rollback in [000001_initial_schema.down.sql](../../db/migrations/000001_initial_schema.down.sql). Operators apply migrations through `go run ./cmd/migrate up`; see [postgresql.md](postgresql.md).
+Schema changes use paired, UTC timestamp-versioned `golang-migrate` files. The current clean baseline is [20260718132603_initial_schema.up.sql](../../db/migrations/20260718132603_initial_schema.up.sql), with its rollback in [20260718132603_initial_schema.down.sql](../../db/migrations/20260718132603_initial_schema.down.sql). Operators apply migrations through `go run ./cmd/migrate up`; see [postgresql.md](postgresql.md).
 
 PostgreSQL repository tests create isolated schemas when `TEST_DATABASE_URL` is present. The LND Go dependency still brings an SQLite module transitively for LND's own internal packages, but PamojaBuild neither imports nor selects SQLite.
 
@@ -250,7 +250,7 @@ Relevant backend:
 - [auth service](../../internal/auth/service/auth_service.go)
 - [auth repository](../../internal/auth/repository/postgres.go)
 - [auth middleware](../../internal/auth/delivery/http/middleware.go)
-- [initial PostgreSQL migration](../../db/migrations/000001_initial_schema.up.sql)
+- [initial PostgreSQL migration](../../db/migrations/20260718132603_initial_schema.up.sql)
 
 The JWT is a signed session token. The frontend stores it in `sessionStorage` and sends it as:
 
@@ -330,7 +330,7 @@ Important `tasks` columns:
 | `max_volunteers` | `max_volunteers` | Intended capacity; currently not enforced. |
 | `volunteer_mode` | `volunteer_mode` | `open` or `approval_required`; backend application rules currently do not distinguish them. |
 
-Schema: [initial PostgreSQL migration](../../db/migrations/000001_initial_schema.up.sql)
+Schema: [initial PostgreSQL migration](../../db/migrations/20260718132603_initial_schema.up.sql)
 
 ### Response
 
@@ -424,7 +424,7 @@ Invoice DB mapping:
 | times | `created_at`, `expires_at`, `settled_at` | Timing and status display. |
 | LND sequence numbers | `add_index`, `settle_index` | Recovery and ordered settlement processing. |
 
-Schema: [initial PostgreSQL migration](../../db/migrations/000001_initial_schema.up.sql)
+Schema: [initial PostgreSQL migration](../../db/migrations/20260718132603_initial_schema.up.sql)
 
 ### What happens after the donor pays
 
@@ -486,7 +486,7 @@ Application columns:
 | `status` | `pending`, intended later `approved` or `rejected`. |
 | `applied_at`, `reviewed_at` | Audit timing. |
 
-Schema: [initial PostgreSQL migration](../../db/migrations/000001_initial_schema.up.sql)
+Schema: [initial PostgreSQL migration](../../db/migrations/20260718132603_initial_schema.up.sql)
 
 ### Selecting/approving a volunteer
 
@@ -529,7 +529,7 @@ Backend steps:
 6. router subscriber sets `tasks.status` to the literal value `submitted`;
 7. append a zero-amount `SUBMISSION_CREATED` ledger entry.
 
-Schema: [initial PostgreSQL migration](../../db/migrations/000001_initial_schema.up.sql)
+Schema: [initial PostgreSQL migration](../../db/migrations/20260718132603_initial_schema.up.sql)
 
 ### Current submission mismatches
 
@@ -697,7 +697,7 @@ Backend:
 
 The table's primary key `(task_slug, trustee_index)` ensures only one row per slot.
 
-Schema: [initial PostgreSQL migration](../../db/migrations/000001_initial_schema.up.sql)
+Schema: [initial PostgreSQL migration](../../db/migrations/20260718132603_initial_schema.up.sql)
 
 ### Why it is unsafe today
 
@@ -738,7 +738,7 @@ Router event subscribers create:
 | Lightning payment settled | `INBOUND_DONATION` | invoice sats |
 | Task status changed to completed | `TASK_STATUS_COMPLETED` | 0 |
 
-The schema is in the [initial PostgreSQL migration](../../db/migrations/000001_initial_schema.up.sql).
+The schema is in the [initial PostgreSQL migration](../../db/migrations/20260718132603_initial_schema.up.sql).
 
 The HMAC input in actual code is:
 
@@ -1065,7 +1065,7 @@ Tables still needed or needing redesign for later phases likely include:
 If time is short, read in this order:
 
 1. [router.go](../../cmd/app/router.go) — every real route and cross-domain event connection.
-2. [initial PostgreSQL migration](../../db/migrations/000001_initial_schema.up.sql) and [task domain](../../internal/task/domain.go) — the two task state fields.
+2. [initial PostgreSQL migration](../../db/migrations/20260718132603_initial_schema.up.sql) and [task domain](../../internal/task/domain.go) — the two task state fields.
 3. [Lightning service](../../internal/lightning/service/lightning_service.go) and [repository](../../internal/lightning/repository/postgres.go) — the best-developed money flow.
 4. [ledger service](../../internal/ledger/service/ledger_service.go) and [repository](../../internal/ledger/repository/postgres.go) — HMAC chain and current balances.
 5. [trustee service](../../internal/trustee/service/trustee_service.go) and [trustee page](../../../frontend/js/pages/trusteeDashboardPage.js) — current assignment/key gaps.
