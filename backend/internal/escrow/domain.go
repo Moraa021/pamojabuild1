@@ -3,10 +3,18 @@ package escrow
 import "context"
 
 type SignatureCollection struct {
-	TaskSlug               string
-	TrusteePublicKeyHex    string
-	L1SignatureFragment    string
-	L2WebCryptoSignature   string
+	TaskSlug             string
+	TrusteePublicKeyHex  string
+	L1SignatureFragment  string
+	L2WebCryptoSignature string
+}
+
+type PayoutManifest struct {
+	TaskSlug         string
+	UnsignedPSBTHex  string
+	VolunteerInvoice string
+	L1AmountSats     int64
+	L2AmountSats     int64
 }
 
 type AddressDerivationService interface {
@@ -14,8 +22,8 @@ type AddressDerivationService interface {
 }
 
 type PayoutOrchestrator interface {
-	PreparePayoutManifest(ctx context.Context, taskSlug string, destinationAddress string, volunteerInvoice string) (*SignatureCollection, error)
-	SubmitTrusteeSignature(ctx context.Context, taskSlug string, payload *SignatureCollection) (bool, error)
+	PreparePayoutManifest(ctx context.Context, taskSlug string) (*PayoutManifest, error)
+	SubmitTrusteeSignature(ctx context.Context, taskSlug string, trusteeUserID int64, l1Signature, l2Signature string) (bool, error)
 	FinalizeAndBroadcastPayout(ctx context.Context, taskSlug string) error
 }
 

@@ -1,6 +1,14 @@
 package trustee
 
-import "context"
+import (
+	"context"
+	"errors"
+)
+
+var (
+	ErrRegistrationConflict = errors.New("trustee registration conflict")
+	ErrTaskNotFound         = errors.New("trustee task not found")
+)
 
 type TrusteeKey struct {
 	TaskSlug           string

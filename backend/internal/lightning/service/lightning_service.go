@@ -13,11 +13,15 @@ import (
 	"pamojabuild1/backend/internal/config"
 	"pamojabuild1/backend/internal/events"
 	"pamojabuild1/backend/internal/lightning"
+	"pamojabuild1/backend/internal/task"
 )
 
 var (
-	ErrInvoiceGeneration = errors.New("failed to generate invoice")
-	ErrInvalidInvoice    = errors.New("generated invoice is missing required fields")
+	ErrInvoiceGeneration    = errors.New("failed to generate invoice")
+	ErrInvalidInvoice       = errors.New("generated invoice is missing required fields")
+	ErrInvalidDonation      = errors.New("invalid donation request")
+	ErrDonationTaskNotFound = errors.New("donation task not found")
+	ErrDonationsNotAllowed  = errors.New("task is not accepting donations")
 )
 
 const defaultInvoiceExpiry = time.Hour
@@ -26,19 +30,47 @@ const settlementListenerRetryDelay = 5 * time.Second
 const invoiceExpirySweepInterval = time.Minute
 
 type LightningService struct {
-	repo     lightning.Repository
-	node     lightning.NodeClient
-	cfg      *config.Config
-	eventBus *events.EventBus
+	repo       lightning.Repository
+	node       lightning.NodeClient
+	cfg        *config.Config
+	eventBus   *events.EventBus
+	taskReader TaskReader
 }
 
-func NewLightningService(repo lightning.Repository, node lightning.NodeClient, cfg *config.Config, eventBus *events.EventBus) *LightningService {
-	return &LightningService{repo: repo, node: node, cfg: cfg, eventBus: eventBus}
+type TaskReader interface {
+	GetBySlug(ctx context.Context, slug string) (*task.Task, error)
+}
+
+func NewLightningService(
+	repo lightning.Repository,
+	node lightning.NodeClient,
+	cfg *config.Config,
+	eventBus *events.EventBus,
+	taskReaders ...TaskReader,
+) *LightningService {
+	service := &LightningService{repo: repo, node: node, cfg: cfg, eventBus: eventBus}
+	if len(taskReaders) > 0 {
+		service.taskReader = taskReaders[0]
+	}
+	return service
 }
 
 func (s *LightningService) RequestDonationInvoice(ctx context.Context, taskSlug string, amountSats int64) (*lightning.Invoice, error) {
-	if amountSats <= 0 {
-		return nil, errors.New("amount must be greater than 0")
+	taskSlug = strings.TrimSpace(taskSlug)
+	if taskSlug == "" || len(taskSlug) > 255 || amountSats <= 0 {
+		return nil, ErrInvalidDonation
+	}
+	if s.taskReader != nil {
+		donationTask, err := s.taskReader.GetBySlug(ctx, taskSlug)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil, ErrDonationTaskNotFound
+			}
+			return nil, fmt.Errorf("load donation task: %w", err)
+		}
+		if donationTask.FinancialState != "ACTIVE" {
+			return nil, ErrDonationsNotAllowed
+		}
 	}
 	if s.node == nil {
 		return nil, ErrInvoiceGeneration
@@ -96,6 +128,7 @@ func isPaymentHashHex(paymentHash string) bool {
 }
 
 func (s *LightningService) GetInvoiceStatus(ctx context.Context, paymentHash string) (*lightning.Invoice, error) {
+	paymentHash = strings.ToLower(strings.TrimSpace(paymentHash))
 	if !isPaymentHashHex(paymentHash) {
 		return nil, lightning.ErrInvalidPaymentHash
 	}

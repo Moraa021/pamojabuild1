@@ -4,8 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"pamojabuild1/backend/internal/volunteer"
 )
 
@@ -56,12 +58,16 @@ func (r *VolunteerRepository) GetByUserID(ctx context.Context, userID int64) (*v
 	var skillsJSON []byte
 
 	query := `
-		SELECT user_id, bio, skills, lightning_address, onchain_address, 
-		       reputation_score, tier, completed_tasks, total_earned_sats, created_at, updated_at
-		FROM volunteer_profiles WHERE user_id = $1`
+		SELECT profile.user_id, users.display_name, profile.bio, profile.skills,
+		       profile.lightning_address, profile.onchain_address, profile.reputation_score,
+		       profile.tier, profile.completed_tasks, profile.total_earned_sats,
+		       profile.created_at, profile.updated_at
+		FROM volunteer_profiles profile
+		JOIN users ON users.id = profile.user_id
+		WHERE profile.user_id = $1`
 
 	err := r.db.QueryRowContext(ctx, query, userID).Scan(
-		&profile.UserID, &profile.Bio, &skillsJSON, &profile.LightningAddress,
+		&profile.UserID, &profile.DisplayName, &profile.Bio, &skillsJSON, &profile.LightningAddress,
 		&profile.OnchainAddress, &profile.ReputationScore, &profile.Tier,
 		&profile.CompletedTasks, &profile.TotalEarnedSats, &profile.CreatedAt, &profile.UpdatedAt,
 	)
@@ -71,6 +77,29 @@ func (r *VolunteerRepository) GetByUserID(ctx context.Context, userID int64) (*v
 
 	json.Unmarshal(skillsJSON, &profile.Skills)
 	return profile, nil
+}
+
+func (r *VolunteerRepository) UpdatePaymentProfile(ctx context.Context, userID int64, lightningAddress, onchainAddress string) error {
+	result, err := r.db.ExecContext(ctx, `
+		UPDATE volunteer_profiles
+		SET lightning_address = $1, onchain_address = $2, updated_at = $3
+		WHERE user_id = $4`,
+		lightningAddress,
+		onchainAddress,
+		time.Now().UTC(),
+		userID,
+	)
+	if err != nil {
+		return err
+	}
+	updated, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if updated == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }
 
 func (r *VolunteerRepository) Update(ctx context.Context, profile *volunteer.VolunteerProfile) error {
@@ -97,9 +126,21 @@ func (r *VolunteerRepository) CreateApplication(ctx context.Context, app *volunt
 	app.AppliedAt = time.Now()
 	app.Status = "pending"
 
-	return r.db.QueryRowContext(ctx, query,
+	err := r.db.QueryRowContext(ctx, query,
 		app.TaskSlug, app.VolunteerID, app.Message, app.Status, app.AppliedAt,
 	).Scan(&app.ID)
+	var pgError *pgconn.PgError
+	if errors.As(err, &pgError) {
+		switch pgError.Code {
+		case "23505":
+			return volunteer.ErrApplicationAlreadyExists
+		case "23503":
+			return volunteer.ErrTaskDoesNotExist
+		case "P0001":
+			return volunteer.ErrTaskRelationshipConflict
+		}
+	}
+	return err
 }
 
 func (r *VolunteerRepository) GetApplicationsByVolunteerID(ctx context.Context, volunteerID int64) ([]volunteer.TaskApplication, error) {

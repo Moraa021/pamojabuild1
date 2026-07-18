@@ -3,10 +3,10 @@ package http
 import "time"
 
 type VolunteerProfileRequest struct {
-	Bio              string   `json:"bio"`
-	Skills           []string `json:"skills"`
-	LightningAddress string   `json:"lightning_address"`
-	OnchainAddress   string   `json:"onchain_address"`
+	Bio              string   `json:"bio" binding:"max=2000"`
+	Skills           []string `json:"skills" binding:"max=50,dive,min=1,max=100"`
+	LightningAddress string   `json:"lightning_address" binding:"max=255"`
+	OnchainAddress   string   `json:"onchain_address" binding:"max=255"`
 }
 
 type VolunteerProfileResponse struct {
@@ -25,7 +25,7 @@ type VolunteerProfileResponse struct {
 }
 
 type TaskApplicationRequest struct {
-	Message string `json:"message" binding:"required"`
+	Message string `json:"message" binding:"required,max=2000"`
 }
 
 type TaskApplicationResponse struct {
@@ -39,8 +39,8 @@ type TaskApplicationResponse struct {
 }
 
 type TaskSubmissionRequest struct {
-	Description  string   `json:"description" binding:"required"`
-	EvidenceURLs []string `json:"evidence_urls" binding:"required,min=1"`
+	Description  string   `json:"description" binding:"required,max=5000"`
+	EvidenceURLs []string `json:"evidence_urls" binding:"required,min=1,max=20,dive,required,max=2048"`
 }
 
 type TaskSubmissionResponse struct {
@@ -57,7 +57,6 @@ type TaskSubmissionResponse struct {
 type VolunteerPaymentResponse struct {
 	ID              int64      `json:"id"`
 	TaskSlug        string     `json:"task_slug"`
-	TaskTitle       string     `json:"task_title"`
 	AmountSats      int64      `json:"amount_sats"`
 	PaymentMethod   string     `json:"payment_method"` // "lightning", "onchain"
 	Status          string     `json:"status"`
@@ -66,9 +65,13 @@ type VolunteerPaymentResponse struct {
 }
 
 type PaymentProfileRequest struct {
+	LightningAddress string `json:"lightning_address" binding:"max=255"`
+	OnchainAddress   string `json:"onchain_address" binding:"max=255"`
+}
+
+type PaymentProfileResponse struct {
 	LightningAddress string `json:"lightning_address"`
 	OnchainAddress   string `json:"onchain_address"`
-	PreferredMethod  string `json:"preferred_method" binding:"required"` // "lightning", "onchain"
 }
 
 type ReputationResponse struct {
@@ -80,7 +83,14 @@ type ReputationResponse struct {
 	SuccessRate     float64 `json:"success_rate"`
 }
 
-type VolunteerPaymentsSummaryResponse struct {
-	TotalEarnedSats int64 `json:"total_earned_sats"`
-	CompletedTasks  int   `json:"completed_tasks"`
+type TaskApplicationListResponse struct {
+	Applications []TaskApplicationResponse `json:"applications"`
+}
+
+type TaskSubmissionListResponse struct {
+	Submissions []TaskSubmissionResponse `json:"submissions"`
+}
+
+type VolunteerPaymentListResponse struct {
+	Payments []VolunteerPaymentResponse `json:"payments"`
 }

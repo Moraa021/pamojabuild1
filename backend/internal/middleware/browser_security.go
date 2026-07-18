@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+
+	"pamojabuild1/backend/internal/apihttp"
 )
 
 func BrowserSecurity(allowedOrigins []string) gin.HandlerFunc {
@@ -23,11 +25,11 @@ func BrowserSecurity(allowedOrigins []string) gin.HandlerFunc {
 		// involved.
 		if isStateChanging(c.Request.Method) &&
 			strings.EqualFold(c.GetHeader("Sec-Fetch-Site"), "cross-site") {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "cross-site request rejected"})
+			apihttp.WriteError(c, http.StatusForbidden, apihttp.CodeUnauthorized, "cross-site request rejected")
 			return
 		}
 		if isStateChanging(c.Request.Method) && origin != "" && !originAllowed {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "origin not allowed"})
+			apihttp.WriteError(c, http.StatusForbidden, apihttp.CodeUnauthorized, "origin not allowed")
 			return
 		}
 
@@ -41,7 +43,7 @@ func BrowserSecurity(allowedOrigins []string) gin.HandlerFunc {
 
 		if c.Request.Method == http.MethodOptions {
 			if origin == "" || !originAllowed {
-				c.AbortWithStatus(http.StatusForbidden)
+				apihttp.WriteError(c, http.StatusForbidden, apihttp.CodeUnauthorized, "origin not allowed")
 				return
 			}
 			c.AbortWithStatus(http.StatusNoContent)

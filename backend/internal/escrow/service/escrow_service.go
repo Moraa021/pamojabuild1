@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"pamojabuild1/backend/internal/escrow"
 	"pamojabuild1/backend/internal/events"
@@ -13,6 +14,9 @@ import (
 
 var (
 	ErrInsufficientSignatures = errors.New("insufficient signatures, need at least 3 of 5")
+	ErrInvalidPayoutRequest   = errors.New("invalid payout request")
+	ErrPayoutNotReady         = errors.New("payout review scaffold is not ready")
+	ErrTrusteeNotAssigned     = errors.New("account is not assigned as a trustee for this task")
 )
 
 type EscrowService struct {
@@ -31,7 +35,11 @@ func NewEscrowService(repo escrow.SignatureRepository, trusteeRepo trustee.KeyRe
 	}
 }
 
-func (s *EscrowService) PreparePayoutManifest(ctx context.Context, taskSlug string, destinationAddress string, volunteerInvoice string) (*escrow.SignatureCollection, error) {
+func (s *EscrowService) PreparePayoutManifest(ctx context.Context, taskSlug string) (*escrow.PayoutManifest, error) {
+	taskSlug = strings.TrimSpace(taskSlug)
+	if taskSlug == "" || len(taskSlug) > 255 {
+		return nil, ErrInvalidPayoutRequest
+	}
 	// Get task balance
 	balance, err := s.ledgerRepo.GetTaskBalance(ctx, taskSlug)
 	if err != nil {
@@ -45,12 +53,7 @@ func (s *EscrowService) PreparePayoutManifest(ctx context.Context, taskSlug stri
 	}
 
 	if len(trusteeKeys) < 5 {
-		return nil, errors.New("all 5 trustee slots must be filled")
-	}
-
-	// Build payout manifest
-	manifest := &escrow.SignatureCollection{
-		TaskSlug: taskSlug,
+		return nil, ErrPayoutNotReady
 	}
 
 	// In production, this would:
@@ -61,12 +64,53 @@ func (s *EscrowService) PreparePayoutManifest(ctx context.Context, taskSlug stri
 	fmt.Printf("Preparing payout for %s: L1=%d sats, L2=%d sats\n",
 		taskSlug, balance.L1BalanceSats, balance.L2BalanceSats)
 
-	return manifest, nil
+	return &escrow.PayoutManifest{
+		TaskSlug:         taskSlug,
+		UnsignedPSBTHex:  "unsigned_psbt_placeholder",
+		VolunteerInvoice: "volunteer_invoice_placeholder",
+		L1AmountSats:     balance.L1BalanceSats,
+		L2AmountSats:     balance.L2BalanceSats,
+	}, nil
 }
 
-func (s *EscrowService) SubmitTrusteeSignature(ctx context.Context, taskSlug string, payload *escrow.SignatureCollection) (bool, error) {
-	payload.TaskSlug = taskSlug
-	
+func (s *EscrowService) SubmitTrusteeSignature(
+	ctx context.Context,
+	taskSlug string,
+	trusteeUserID int64,
+	l1Signature string,
+	l2Signature string,
+) (bool, error) {
+	taskSlug = strings.TrimSpace(taskSlug)
+	l1Signature = strings.TrimSpace(l1Signature)
+	l2Signature = strings.TrimSpace(l2Signature)
+	if taskSlug == "" || len(taskSlug) > 255 || trusteeUserID <= 0 ||
+		l1Signature == "" || l2Signature == "" ||
+		len(l1Signature) > 65536 || len(l2Signature) > 65536 {
+		return false, ErrInvalidPayoutRequest
+	}
+
+	trusteeKeys, err := s.trusteeRepo.GetKeysByTask(ctx, taskSlug)
+	if err != nil {
+		return false, fmt.Errorf("load task trustees: %w", err)
+	}
+	var storedPublicKey string
+	for _, key := range trusteeKeys {
+		if key.UserID == trusteeUserID {
+			storedPublicKey = key.WebCryptoPubkeyHex
+			break
+		}
+	}
+	if storedPublicKey == "" {
+		return false, ErrTrusteeNotAssigned
+	}
+
+	payload := &escrow.SignatureCollection{
+		TaskSlug:             taskSlug,
+		TrusteePublicKeyHex:  storedPublicKey,
+		L1SignatureFragment:  l1Signature,
+		L2WebCryptoSignature: l2Signature,
+	}
+
 	if err := s.repo.SaveSignature(ctx, payload); err != nil {
 		return false, err
 	}

@@ -6,7 +6,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"pamojabuild1/backend/internal/apihttp"
 	"pamojabuild1/backend/internal/lightning"
+	lightningService "pamojabuild1/backend/internal/lightning/service"
 )
 
 type LightningHandler struct {
@@ -26,21 +28,33 @@ func NewLightningHandler(service lightning.Service) *LightningHandler {
 // @Param        slug  path      string           true  "Task slug"
 // @Param        body  body      DonationRequest  true  "Donation request payload"
 // @Success      201   {object}  DonationInvoiceResponse
-// @Failure      400   {object}  map[string]string
-// @Failure      500   {object}  map[string]string
+// @Failure      400   {object}  apihttp.ErrorResponse
+// @Failure      401   {object}  apihttp.ErrorResponse
+// @Failure      404   {object}  apihttp.ErrorResponse
+// @Failure      409   {object}  apihttp.ErrorResponse
+// @Failure      500   {object}  apihttp.ErrorResponse
+// @Security     CookieAuth
 // @Router       /api/v1/tasks/{slug}/donate [post]
 func (h *LightningHandler) RequestDonationInvoice(c *gin.Context) {
 	taskSlug := c.Param("slug")
 
 	var req DonationRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	if !apihttp.BindJSON(c, &req) {
 		return
 	}
 
 	invoice, err := h.service.RequestDonationInvoice(c.Request.Context(), taskSlug, req.AmountSats)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		switch {
+		case errors.Is(err, lightningService.ErrInvalidDonation):
+			apihttp.WriteError(c, http.StatusBadRequest, apihttp.CodeValidation, "amount_sats must be greater than zero and task slug must be valid")
+		case errors.Is(err, lightningService.ErrDonationTaskNotFound):
+			apihttp.WriteError(c, http.StatusNotFound, apihttp.CodeNotFound, "task not found")
+		case errors.Is(err, lightningService.ErrDonationsNotAllowed):
+			apihttp.WriteError(c, http.StatusConflict, apihttp.CodeConflict, "task is not accepting donations")
+		default:
+			apihttp.WriteError(c, http.StatusInternalServerError, apihttp.CodeInternal, "could not create donation invoice")
+		}
 		return
 	}
 
@@ -58,28 +72,30 @@ func (h *LightningHandler) RequestDonationInvoice(c *gin.Context) {
 // @Produce      json
 // @Param        payment_hash  query  string  true  "Payment hash"
 // @Success      200           {object}  InvoiceStatusResponse
-// @Failure      400           {object}  map[string]string
-// @Failure      404           {object}  map[string]string
-// @Failure      500           {object}  map[string]string
+// @Failure      400           {object}  apihttp.ErrorResponse
+// @Failure      401           {object}  apihttp.ErrorResponse
+// @Failure      404           {object}  apihttp.ErrorResponse
+// @Failure      500           {object}  apihttp.ErrorResponse
+// @Security     CookieAuth
 // @Router       /api/v1/lightning/invoices/status [get]
 func (h *LightningHandler) CheckInvoiceStatus(c *gin.Context) {
 	paymentHash := c.Query("payment_hash")
 	if paymentHash == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "payment_hash is required"})
+		apihttp.WriteValidationError(c, map[string]string{"payment_hash": "is required"})
 		return
 	}
 
 	invoice, err := h.service.GetInvoiceStatus(c.Request.Context(), paymentHash)
 	if err != nil {
 		if errors.Is(err, lightning.ErrInvoiceNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+			apihttp.WriteError(c, http.StatusNotFound, apihttp.CodeNotFound, "invoice not found")
 			return
 		}
 		if errors.Is(err, lightning.ErrInvalidPaymentHash) {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			apihttp.WriteValidationError(c, map[string]string{"payment_hash": "must be 64 hexadecimal characters"})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		apihttp.WriteError(c, http.StatusInternalServerError, apihttp.CodeInternal, "could not load invoice status")
 		return
 	}
 

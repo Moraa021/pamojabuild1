@@ -42,7 +42,12 @@ func TestAssignTrusteeSlot(t *testing.T) {
 	keyRepo := &mockTrusteeKeyRepo{}
 	svc := NewTrusteeService(keyRepo, nil)
 
-	err := svc.AssignTrusteeSlot(context.Background(), "task1", &trustee.TrusteeKey{TrusteeIndex: 2})
+	err := svc.AssignTrusteeSlot(context.Background(), "task1", &trustee.TrusteeKey{
+		TrusteeIndex:       2,
+		UserID:             7,
+		Xpub:               "xpub-test",
+		WebCryptoPubkeyHex: "public-key",
+	})
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -63,7 +68,12 @@ func TestAssignTrusteeSlotTaken(t *testing.T) {
 	keyRepo := &mockTrusteeKeyRepo{specific: &trustee.TrusteeKey{TrusteeIndex: 1, UserID: 42}}
 	svc := NewTrusteeService(keyRepo, nil)
 
-	err := svc.AssignTrusteeSlot(context.Background(), "task1", &trustee.TrusteeKey{TrusteeIndex: 1})
+	err := svc.AssignTrusteeSlot(context.Background(), "task1", &trustee.TrusteeKey{
+		TrusteeIndex:       1,
+		UserID:             7,
+		Xpub:               "xpub-test",
+		WebCryptoPubkeyHex: "public-key",
+	})
 	if !errors.Is(err, ErrSlotAlreadyTaken) {
 		t.Fatalf("expected ErrSlotAlreadyTaken, got %v", err)
 	}

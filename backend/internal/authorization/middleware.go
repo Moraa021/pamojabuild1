@@ -5,6 +5,8 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+
+	"pamojabuild1/backend/internal/apihttp"
 )
 
 type TrusteeRelationshipReader interface {
@@ -20,13 +22,11 @@ func RequireTaskTrustee(reader TrusteeRelationshipReader) gin.HandlerFunc {
 		taskSlug := c.Param("slug")
 		allowed, err := reader.IsTaskTrustee(c.Request.Context(), taskSlug, userID)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "authorization check failed"})
-			c.Abort()
+			apihttp.WriteError(c, http.StatusInternalServerError, apihttp.CodeInternal, "authorization check failed")
 			return
 		}
 		if !allowed {
-			c.JSON(http.StatusForbidden, gin.H{"error": "task trustee access required"})
-			c.Abort()
+			apihttp.WriteError(c, http.StatusForbidden, apihttp.CodeUnauthorized, "task trustee access required")
 			return
 		}
 		c.Next()

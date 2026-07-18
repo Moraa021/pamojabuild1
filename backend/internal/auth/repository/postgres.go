@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/lib/pq"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"pamojabuild1/backend/internal/auth"
 )
@@ -39,8 +39,8 @@ func (r *AuthRepository) Create(ctx context.Context, user *auth.User, session *a
 	if err := tx.QueryRowContext(ctx, query,
 		user.PhoneNumber, user.PasswordHash, user.DisplayName, now, now,
 	).Scan(&user.ID, &user.IsAdmin); err != nil {
-		var pqErr *pq.Error
-		if errors.As(err, &pqErr) && pqErr.Code == "23505" {
+		var pgError *pgconn.PgError
+		if errors.As(err, &pgError) && pgError.Code == "23505" {
 			return auth.ErrPhoneNumberTaken
 		}
 		return fmt.Errorf("insert account: %w", err)

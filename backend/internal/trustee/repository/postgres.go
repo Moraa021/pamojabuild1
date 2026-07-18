@@ -3,7 +3,9 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"errors"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"pamojabuild1/backend/internal/trustee"
 )
 
@@ -23,6 +25,15 @@ func (r *TrusteeRepository) SaveKeys(ctx context.Context, key *trustee.TrusteeKe
 	_, err := r.db.ExecContext(ctx, query,
 		key.TaskSlug, key.TrusteeIndex, key.UserID, key.Xpub, key.WebCryptoPubkeyHex,
 	)
+	var pgError *pgconn.PgError
+	if errors.As(err, &pgError) {
+		switch pgError.Code {
+		case "23505", "P0001":
+			return trustee.ErrRegistrationConflict
+		case "23503":
+			return trustee.ErrTaskNotFound
+		}
+	}
 	return err
 }
 
@@ -38,7 +49,7 @@ func (r *TrusteeRepository) GetKeysByTask(ctx context.Context, taskSlug string) 
 	}
 	defer rows.Close()
 
-	var keys []trustee.TrusteeKey
+	keys := make([]trustee.TrusteeKey, 0)
 	for rows.Next() {
 		var key trustee.TrusteeKey
 		if err := rows.Scan(&key.TaskSlug, &key.TrusteeIndex, &key.UserID,
@@ -46,6 +57,9 @@ func (r *TrusteeRepository) GetKeysByTask(ctx context.Context, taskSlug string) 
 			return nil, err
 		}
 		keys = append(keys, key)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	return keys, nil
 }

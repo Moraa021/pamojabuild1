@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strings"
 
 	"pamojabuild1/backend/internal/events"
 	"pamojabuild1/backend/internal/trustee"
@@ -16,6 +17,9 @@ import (
 var (
 	ErrInvalidTrusteeIndex = errors.New("trustee index must be between 0 and 4")
 	ErrSlotAlreadyTaken    = errors.New("trustee slot already assigned")
+	ErrInvalidTrusteeKeys  = errors.New("invalid trustee key registration")
+	ErrTrusteeTaskNotFound = errors.New("trustee task not found")
+	ErrTrusteeConflict     = errors.New("trustee registration conflicts with an existing task relationship")
 )
 
 type TrusteeService struct {
@@ -28,8 +32,24 @@ func NewTrusteeService(keyRepo trustee.KeyRepository, eventBus *events.EventBus)
 }
 
 func (s *TrusteeService) AssignTrusteeSlot(ctx context.Context, slug string, key *trustee.TrusteeKey) error {
+	slug = strings.TrimSpace(slug)
+	if key == nil || slug == "" || len(slug) > 255 {
+		return ErrInvalidTrusteeKeys
+	}
 	if key.TrusteeIndex < 0 || key.TrusteeIndex > 4 {
 		return ErrInvalidTrusteeIndex
+	}
+	if key.UserID <= 0 {
+		return ErrInvalidTrusteeKeys
+	}
+	key.Xpub = strings.TrimSpace(key.Xpub)
+	key.WebCryptoPubkeyHex = strings.TrimSpace(key.WebCryptoPubkeyHex)
+	// Full network/version parsing and proof of key ownership belong to trustee
+	// onboarding. This contract boundary still rejects empty or oversized input
+	// so storage errors are not used as validation.
+	if key.Xpub == "" || len(key.Xpub) > 255 ||
+		key.WebCryptoPubkeyHex == "" || len(key.WebCryptoPubkeyHex) > 512 {
+		return ErrInvalidTrusteeKeys
 	}
 
 	existing, err := s.keyRepo.GetSpecificTrustee(ctx, slug, key.TrusteeIndex)
@@ -45,7 +65,14 @@ func (s *TrusteeService) AssignTrusteeSlot(ctx context.Context, slug string, key
 		// The database primary key is the final concurrency guard. The insert
 		// never upserts because key registration must not silently replace a
 		// trustee who won a race for the same slot.
-		return fmt.Errorf("save trustee slot: %w", err)
+		switch {
+		case errors.Is(err, trustee.ErrTaskNotFound):
+			return ErrTrusteeTaskNotFound
+		case errors.Is(err, trustee.ErrRegistrationConflict):
+			return ErrTrusteeConflict
+		default:
+			return fmt.Errorf("save trustee slot: %w", err)
+		}
 	}
 
 	if s.eventBus != nil {

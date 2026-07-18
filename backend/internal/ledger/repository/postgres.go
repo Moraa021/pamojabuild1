@@ -48,10 +48,13 @@ func (r *LedgerRepository) GetTaskBalance(ctx context.Context, taskSlug string) 
 	summary := &ledger.BalanceSummary{}
 	query := `
 		SELECT 
-			COALESCE(SUM(CASE WHEN entry_type = 'INBOUND_DONATION' THEN amount_sats ELSE 0 END), 0) as l2_balance,
-			COALESCE(SUM(CASE WHEN entry_type = 'SUBMARINE_SWAP' THEN amount_sats ELSE 0 END), 0) as l1_balance,
-			COALESCE(MAX(id), 0) as current_index
-		FROM ledger_entries WHERE task_slug = $1`
+			COALESCE(SUM(CASE WHEN entries.entry_type = 'INBOUND_DONATION' THEN entries.amount_sats ELSE 0 END), 0) as l2_balance,
+			COALESCE(SUM(CASE WHEN entries.entry_type = 'SUBMARINE_SWAP' THEN entries.amount_sats ELSE 0 END), 0) as l1_balance,
+			COALESCE(MAX(entries.id), 0) as current_index
+		FROM tasks
+		LEFT JOIN ledger_entries entries ON entries.task_slug = tasks.slug
+		WHERE tasks.slug = $1
+		GROUP BY tasks.slug`
 
 	err := r.db.QueryRowContext(ctx, query, taskSlug).Scan(
 		&summary.L2BalanceSats, &summary.L1BalanceSats, &summary.CurrentIndex,

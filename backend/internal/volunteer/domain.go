@@ -2,11 +2,19 @@ package volunteer
 
 import (
 	"context"
+	"errors"
 	"time"
+)
+
+var (
+	ErrApplicationAlreadyExists = errors.New("application already exists")
+	ErrTaskDoesNotExist         = errors.New("task does not exist")
+	ErrTaskRelationshipConflict = errors.New("task relationship conflicts with trustee membership")
 )
 
 type VolunteerProfile struct {
 	UserID           int64
+	DisplayName      string
 	Bio              string
 	Skills           []string
 	LightningAddress string
@@ -64,6 +72,7 @@ type ProfileRepository interface {
 	Create(ctx context.Context, profile *VolunteerProfile) error
 	GetByUserID(ctx context.Context, userID int64) (*VolunteerProfile, error)
 	Update(ctx context.Context, profile *VolunteerProfile) error
+	UpdatePaymentProfile(ctx context.Context, userID int64, lightningAddress, onchainAddress string) error
 }
 
 type ApplicationRepository interface {

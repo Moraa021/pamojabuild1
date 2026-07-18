@@ -10,6 +10,7 @@ import (
 	"pamojabuild1/backend/internal/config"
 	"pamojabuild1/backend/internal/events"
 	"pamojabuild1/backend/internal/lightning"
+	"pamojabuild1/backend/internal/task"
 )
 
 type mockLightningRepo struct {
@@ -32,6 +33,15 @@ type mockLightningNode struct {
 }
 
 const testPaymentHash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+type mockTaskReader struct {
+	task *task.Task
+	err  error
+}
+
+func (m mockTaskReader) GetBySlug(context.Context, string) (*task.Task, error) {
+	return m.task, m.err
+}
 
 func (m *mockLightningNode) CreateInvoice(ctx context.Context, request lightning.InvoiceRequest) (*lightning.Invoice, error) {
 	if m.createErr != nil {
@@ -160,6 +170,44 @@ func TestRequestDonationInvoiceRejectsInvalidAmount(t *testing.T) {
 	}
 	if repo.invoice != nil {
 		t.Fatal("expected invalid donation amount not to create an invoice")
+	}
+}
+
+func TestRequestDonationInvoiceRejectsMissingTaskBeforeCallingLND(t *testing.T) {
+	node := &mockLightningNode{}
+	svc := NewLightningService(
+		&mockLightningRepo{},
+		node,
+		&config.Config{},
+		nil,
+		mockTaskReader{err: sql.ErrNoRows},
+	)
+
+	_, err := svc.RequestDonationInvoice(context.Background(), "missing-task", 100)
+	if !errors.Is(err, ErrDonationTaskNotFound) {
+		t.Fatalf("expected ErrDonationTaskNotFound, got %v", err)
+	}
+	if node.request.TaskSlug != "" {
+		t.Fatal("missing task must be rejected before requesting an LND invoice")
+	}
+}
+
+func TestRequestDonationInvoiceRejectsInactiveTaskBeforeCallingLND(t *testing.T) {
+	node := &mockLightningNode{}
+	svc := NewLightningService(
+		&mockLightningRepo{},
+		node,
+		&config.Config{},
+		nil,
+		mockTaskReader{task: &task.Task{FinancialState: "LIQUIDATING"}},
+	)
+
+	_, err := svc.RequestDonationInvoice(context.Background(), "closed-task", 100)
+	if !errors.Is(err, ErrDonationsNotAllowed) {
+		t.Fatalf("expected ErrDonationsNotAllowed, got %v", err)
+	}
+	if node.request.TaskSlug != "" {
+		t.Fatal("inactive task must be rejected before requesting an LND invoice")
 	}
 }
 

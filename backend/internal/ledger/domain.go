@@ -1,6 +1,11 @@
 package ledger
 
-import "context"
+import (
+	"context"
+	"errors"
+)
+
+var ErrTaskNotFound = errors.New("ledger task not found")
 
 type LedgerEntry struct {
 	ID           int64

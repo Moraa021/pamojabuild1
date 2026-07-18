@@ -4,10 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 
+	"pamojabuild1/backend/internal/apihttp"
 	"pamojabuild1/backend/internal/authorization"
 	"pamojabuild1/backend/internal/config"
 	"pamojabuild1/backend/internal/events"
@@ -109,7 +111,7 @@ func newRouter(db *sql.DB, cfg *config.Config, lightningNode lightning.NodeClien
 	submissionRepo := volunteerRepo.NewSubmissionRepository(db)
 	paymentRepo := volunteerRepo.NewPaymentRepository(db)
 
-	volunteerSvc := volunteerService.NewVolunteerService(profileRepo)
+	volunteerSvc := volunteerService.NewVolunteerService(profileRepo, paymentRepo)
 	applicationSvc := volunteerService.NewApplicationService(applicationRepo, eventBus)
 	submissionSvc := volunteerService.NewSubmissionService(submissionRepo, applicationRepo, eventBus)
 	reputationSvc := volunteerService.NewReputationService(profileRepo, applicationRepo, submissionRepo, paymentRepo)
@@ -125,7 +127,7 @@ func newRouter(db *sql.DB, cfg *config.Config, lightningNode lightning.NodeClien
 	taskAuthorization := authorization.NewRepository(db)
 
 	lightningRepo := lightningRepo.NewLightningRepository(db)
-	lightningSvc := lightningService.NewLightningService(lightningRepo, lightningNode, cfg, eventBus)
+	lightningSvc := lightningService.NewLightningService(lightningRepo, lightningNode, cfg, eventBus, taskRepo)
 	lightningH := lightningHandler.NewLightningHandler(lightningSvc)
 
 	ledgerRepo := ledgerRepo.NewLedgerRepository(db)
@@ -194,9 +196,14 @@ func newRouter(db *sql.DB, cfg *config.Config, lightningNode lightning.NodeClien
 	router.Use(middleware.ErrorHandler(), middleware.RateLimiter(), middleware.ValidationMiddleware())
 	router.Use(middleware.BrowserSecurity(cfg.CORSAllowedOrigins))
 
-	router.GET("/health", func(c *gin.Context) {
-		c.JSON(200, gin.H{"status": "ok"})
+	router.HandleMethodNotAllowed = true
+	router.NoRoute(func(c *gin.Context) {
+		apihttp.WriteError(c, http.StatusNotFound, apihttp.CodeNotFound, "route not found")
 	})
+	router.NoMethod(func(c *gin.Context) {
+		apihttp.WriteError(c, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+	})
+	router.GET("/health", health)
 
 	api := router.Group("/api/v1")
 	{
@@ -230,6 +237,7 @@ func newRouter(db *sql.DB, cfg *config.Config, lightningNode lightning.NodeClien
 				volunteers.GET("/applications", volunteerH.GetApplications)
 				volunteers.GET("/submissions", volunteerH.GetSubmissions)
 				volunteers.GET("/payments", volunteerH.GetPayments)
+				volunteers.GET("/payment-profile", volunteerH.GetPaymentProfile)
 				volunteers.PUT("/payment-profile", volunteerH.UpdatePaymentProfile)
 				volunteers.GET("/reputation", volunteerH.GetReputation)
 			}
@@ -255,4 +263,18 @@ func newRouter(db *sql.DB, cfg *config.Config, lightningNode lightning.NodeClien
 	}
 
 	return router
+}
+
+type healthResponse struct {
+	Status string `json:"status"`
+}
+
+// health godoc
+// @Summary  Check API health
+// @Tags     System
+// @Produce  json
+// @Success  200  {object}  healthResponse
+// @Router   /health [get]
+func health(c *gin.Context) {
+	c.JSON(http.StatusOK, healthResponse{Status: "ok"})
 }
