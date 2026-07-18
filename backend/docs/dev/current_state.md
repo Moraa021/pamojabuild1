@@ -59,8 +59,11 @@ Gaps:
 Status: Partially done.
 
 Evidence:
-- SQLite/Postgres-compatible database setup exists.
-- Migrations exist for users, tasks, volunteer profiles, applications, submissions, trustee keys, ledger entries, Lightning invoices, volunteer payments, and payout signatures.
+- PostgreSQL is the only application database and `DATABASE_URL` is required.
+- A clean PostgreSQL baseline has paired `golang-migrate` up/down migrations.
+- Migrations run through a separate deployment command and no longer run during API startup.
+- PostgreSQL integration tests use isolated schemas through `TEST_DATABASE_URL`.
+- The schema includes users, tasks, volunteer profiles, applications, submissions, trustee keys, ledger entries, Lightning invoices, volunteer payments, and payout signatures.
 - Task creation, volunteer application/submission flow, and ledger HMAC entries are implemented.
 - Ledger chain verification exists.
 

@@ -168,24 +168,26 @@ Expected result:
 
 ## Step 3: Start the Backend
 
-Use a clean SQLite database for this manual test:
+Use a dedicated PostgreSQL database for this manual test:
 
 ```bash
-cd /home/frawuor/projects/personal/pamojabuild1/backend
+cd backend
 
-rm -f /tmp/pamoja-lightning-manual.db
+dropdb --if-exists pamoja_lightning_manual
+createdb pamoja_lightning_manual
 
-export DATABASE_URL=/tmp/pamoja-lightning-manual.db
+export DATABASE_URL='postgres://localhost:5432/pamoja_lightning_manual?sslmode=disable'
 export SERVER_PORT=8080
 export JWT_SECRET=manual-test-jwt-secret
 export SERVER_SECRET=manual-test-ledger-secret
 
+go run ./cmd/migrate up
 go run ./cmd/app
 ```
 
 Expected result:
 
-- The backend runs migrations.
+- The migration command applies the current schema before server startup.
 - The backend logs `Server starting on port 8080`.
 - The backend keeps running.
 - Leave this terminal open.
@@ -468,11 +470,11 @@ What happened in the code:
 - LND sends the missed settlement.
 - The backend processes it exactly like a live payment.
 
-You can inspect the recovery cursor in SQLite:
+You can inspect the recovery cursor in PostgreSQL:
 
 ```bash
-sqlite3 /tmp/pamoja-lightning-manual.db \
-  "SELECT key, value_integer, updated_at FROM lightning_sync_state;"
+psql "$DATABASE_URL" \
+  -c "SELECT key, value_integer, updated_at FROM lightning_sync_state;"
 ```
 
 Expected result:
@@ -504,8 +506,8 @@ export EXPIRE_PAYMENT_HASH=$(echo "$EXPIRE_INVOICE_RESPONSE" | jq -r '.payment_h
 Force it to be expired in the test database:
 
 ```bash
-sqlite3 /tmp/pamoja-lightning-manual.db \
-  "UPDATE lightning_invoices SET expires_at = datetime('now', '-1 minute') WHERE payment_hash = '$EXPIRE_PAYMENT_HASH';"
+psql "$DATABASE_URL" \
+  -c "UPDATE lightning_invoices SET expires_at = CURRENT_TIMESTAMP - INTERVAL '1 minute' WHERE payment_hash = '$EXPIRE_PAYMENT_HASH';"
 ```
 
 Now ask the backend for status:
@@ -587,22 +589,22 @@ Expected result:
 Show invoices:
 
 ```bash
-sqlite3 /tmp/pamoja-lightning-manual.db \
-  "SELECT payment_hash, task_slug, amount_sats, status, settled, settle_index, expires_at, settled_at FROM lightning_invoices ORDER BY created_at;"
+psql "$DATABASE_URL" \
+  -c "SELECT payment_hash, task_slug, amount_sats, status, settled, settle_index, expires_at, settled_at FROM lightning_invoices ORDER BY created_at;"
 ```
 
 Show Lightning sync cursor:
 
 ```bash
-sqlite3 /tmp/pamoja-lightning-manual.db \
-  "SELECT key, value_integer, updated_at FROM lightning_sync_state;"
+psql "$DATABASE_URL" \
+  -c "SELECT key, value_integer, updated_at FROM lightning_sync_state;"
 ```
 
 Show ledger entries:
 
 ```bash
-sqlite3 /tmp/pamoja-lightning-manual.db \
-  "SELECT id, task_slug, entry_type, amount_sats, reference_id FROM ledger_entries ORDER BY id;"
+psql "$DATABASE_URL" \
+  -c "SELECT id, task_slug, entry_type, amount_sats, reference_id FROM ledger_entries ORDER BY id;"
 ```
 
 Expected ledger behavior:
@@ -666,21 +668,19 @@ If it stays pending:
 3. Check the invoice exists in the database:
 
 ```bash
-sqlite3 /tmp/pamoja-lightning-manual.db \
-  "SELECT payment_hash, status, settle_index FROM lightning_invoices WHERE payment_hash = '$PAYMENT_HASH';"
+psql "$DATABASE_URL" \
+  -c "SELECT payment_hash, status, settle_index FROM lightning_invoices WHERE payment_hash = '$PAYMENT_HASH';"
 ```
 
 ### Migration errors
 
-Because some older migrations use `ALTER TABLE ADD COLUMN` without `IF NOT EXISTS`, rerunning migrations against the same SQLite file can warn or fail.
-
-For manual tests, use a clean database:
+Check the recorded version:
 
 ```bash
-rm -f /tmp/pamoja-lightning-manual.db
+go run ./cmd/migrate version
 ```
 
-Then restart the backend.
+Do not use `force` until you have inspected the failed migration and database schema. See [postgresql.md](postgresql.md).
 
 ## Cleanup
 
@@ -689,7 +689,7 @@ Stop the backend with `Ctrl+C`.
 Remove the manual test database:
 
 ```bash
-rm -f /tmp/pamoja-lightning-manual.db
+dropdb --if-exists pamoja_lightning_manual
 ```
 
 Remove copied Polar certs:

@@ -17,8 +17,8 @@ Status key: `NEXT`, `PENDING`, `DONE`, `BLOCKED`.
 
 ## Implementation order
 
-1. **`NEXT` — PostgreSQL and migrations:** Remove SQLite completely, replace the legacy migrations with a clean PostgreSQL baseline, adopt `golang-migrate` up/down migrations, remove automatic server-startup migration execution, and test repositories against PostgreSQL.
-2. **`PENDING` — Accounts and authorization:** Replace permanent creator/volunteer/trustee roles with task relationships, retain only genuine global capabilities such as admin, derive actor IDs from authentication, and enforce ownership and conflict rules.
+1. **`DONE` — PostgreSQL and migrations:** The application is PostgreSQL-only, uses a clean versioned baseline with `golang-migrate` up/down migrations, never migrates during API startup, and runs database integration tests against PostgreSQL through `TEST_DATABASE_URL`.
+2. **`NEXT` — Accounts and authorization:** Replace permanent creator/volunteer/trustee roles with task relationships, retain only genuine global capabilities such as admin, derive actor IDs from authentication, and enforce ownership and conflict rules.
 3. **`PENDING` — API contracts:** Standardize request/response DTOs, errors, validation, and OpenAPI documentation.
 4. **`PENDING` — Task state machines:** Enforce work and financial transitions with authorization, conditional updates, history, idempotency, and recovery rules.
 5. **`PENDING` — Trustee onboarding:** Implement nomination, acceptance, unique membership, key proof/validation, public roster data, replacement, and rotation.
