@@ -1,16 +1,25 @@
 package http
 
-import "time"
+import (
+	"time"
+
+	"pamojabuild1/backend/internal/apihttp"
+)
 
 type CreateTaskRequest struct {
-	Title          string `json:"title" binding:"required"`
+	Title          string `json:"title" binding:"required,max=255"`
 	Description    string `json:"description" binding:"required"`
-	Category       string `json:"category" binding:"required"`
-	Region         string `json:"region" binding:"required"`
-	LocationDetail string `json:"location_detail,omitempty"`
+	Category       string `json:"category" binding:"required,max=100"`
+	Region         string `json:"region" binding:"required,max=100"`
+	LocationDetail string `json:"location_detail,omitempty" binding:"max=255"`
 	GoalSats       int64  `json:"goal_sats,omitempty"`
-	MaxVolunteers  int64  `json:"max_volunteers"`
-	VolunteerMode  string `json:"volunteer_mode" binding:"required"` // "open" or "approval_required"
+	MaxVolunteers  int64  `json:"max_volunteers" binding:"min=0"`
+	VolunteerMode  string `json:"volunteer_mode" binding:"required,oneof=open approval_required"`
+}
+
+type TaskListResponse struct {
+	Tasks      []TaskResponse             `json:"tasks"`
+	Pagination apihttp.PaginationResponse `json:"pagination"`
 }
 
 type TaskResponse struct {

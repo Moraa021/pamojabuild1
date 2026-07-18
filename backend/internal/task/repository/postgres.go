@@ -3,7 +3,11 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"fmt"
+	"strings"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"pamojabuild1/backend/internal/task"
 )
 
@@ -22,11 +26,16 @@ func (r *TaskRepository) Create(ctx context.Context, t *task.Task) error {
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 		RETURNING id`
 
-	return r.db.QueryRowContext(ctx, query,
+	err := r.db.QueryRowContext(ctx, query,
 		t.Slug, t.CreatorID, t.Title, t.Description, t.Category, t.Region,
 		t.LocationDetail, t.Status, t.FinancialState, t.GoalSats, t.MaxVolunteers,
 		t.VolunteerMode, t.ImagePath, t.CreatedAt,
 	).Scan(&t.ID)
+	var pgError *pgconn.PgError
+	if errors.As(err, &pgError) && pgError.Code == "23505" {
+		return task.ErrSlugTaken
+	}
+	return err
 }
 
 func (r *TaskRepository) GetByID(ctx context.Context, id int64) (*task.Task, error) {
@@ -77,32 +86,23 @@ func (r *TaskRepository) UpdateFinancialState(ctx context.Context, slug string, 
 	return err
 }
 
-func (r *TaskRepository) List(ctx context.Context, category, region, status string) ([]task.Task, error) {
+func (r *TaskRepository) List(ctx context.Context, options task.ListOptions) (*task.ListResult, error) {
+	where, args := taskListWhere(options)
+
+	var total int
+	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM tasks`+where, args...).Scan(&total); err != nil {
+		return nil, err
+	}
+
 	query := `
 		SELECT id, slug, creator_id, title, description, category, region, location_detail,
 		       status, financial_state, goal_sats, max_volunteers, volunteer_mode, image_path, created_at
-		FROM tasks WHERE 1=1`
-	
-	args := []interface{}{}
-	argCount := 0
-
-	if category != "" {
-		argCount++
-		query += ` AND category = $` + string(rune('0'+argCount))
-		args = append(args, category)
-	}
-	if region != "" {
-		argCount++
-		query += ` AND region = $` + string(rune('0'+argCount))
-		args = append(args, region)
-	}
-	if status != "" {
-		argCount++
-		query += ` AND status = $` + string(rune('0'+argCount))
-		args = append(args, status)
-	}
-
-	query += ` ORDER BY created_at DESC`
+		FROM tasks` + where + fmt.Sprintf(
+		` ORDER BY created_at DESC, id DESC LIMIT $%d OFFSET $%d`,
+		len(args)+1,
+		len(args)+2,
+	)
+	args = append(args, options.PageSize, (options.Page-1)*options.PageSize)
 
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -110,7 +110,7 @@ func (r *TaskRepository) List(ctx context.Context, category, region, status stri
 	}
 	defer rows.Close()
 
-	var tasks []task.Task
+	tasks := make([]task.Task, 0)
 	for rows.Next() {
 		var t task.Task
 		if err := rows.Scan(&t.ID, &t.Slug, &t.CreatorID, &t.Title, &t.Description,
@@ -120,5 +120,27 @@ func (r *TaskRepository) List(ctx context.Context, category, region, status stri
 		}
 		tasks = append(tasks, t)
 	}
-	return tasks, nil
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return &task.ListResult{Tasks: tasks, Total: total}, nil
+}
+
+func taskListWhere(options task.ListOptions) (string, []any) {
+	conditions := make([]string, 0, 3)
+	args := make([]any, 0, 3)
+	add := func(column, value string) {
+		if value == "" {
+			return
+		}
+		args = append(args, value)
+		conditions = append(conditions, fmt.Sprintf("%s = $%d", column, len(args)))
+	}
+	add("category", options.Category)
+	add("region", options.Region)
+	add("status", options.Status)
+	if len(conditions) == 0 {
+		return "", args
+	}
+	return " WHERE " + strings.Join(conditions, " AND "), args
 }
