@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"testing"
 
@@ -22,7 +23,7 @@ func (m *mockVolunteerProfileRepo) GetByUserID(ctx context.Context, userID int64
 	if m.profile != nil && m.profile.UserID == userID {
 		return m.profile, nil
 	}
-	return nil, errors.New("not found")
+	return nil, sql.ErrNoRows
 }
 
 func (m *mockVolunteerProfileRepo) Update(ctx context.Context, profile *volunteer.VolunteerProfile) error {

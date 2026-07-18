@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -83,7 +84,10 @@ func (s *AuthService) SignIn(ctx context.Context, phone, password string) (*auth
 
 	user, err := s.repo.GetByPhone(ctx, normalizedPhone)
 	if err != nil {
-		return nil, ErrInvalidCredentials
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrInvalidCredentials
+		}
+		return nil, fmt.Errorf("load account for sign in: %w", err)
 	}
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
 		return nil, ErrInvalidCredentials
@@ -119,7 +123,10 @@ func (s *AuthService) Authenticate(ctx context.Context, token string) (*auth.Use
 	}
 	user, err := s.repo.GetBySessionHash(ctx, hash)
 	if err != nil {
-		return nil, ErrInvalidSession
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrInvalidSession
+		}
+		return nil, fmt.Errorf("load account session: %w", err)
 	}
 	return user, nil
 }

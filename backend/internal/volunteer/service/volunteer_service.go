@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
@@ -26,7 +27,10 @@ func NewVolunteerService(profileRepo volunteer.ProfileRepository, paymentRepo vo
 func (s *VolunteerService) GetProfile(ctx context.Context, userID int64) (*volunteer.VolunteerProfile, error) {
 	profile, err := s.profileRepo.GetByUserID(ctx, userID)
 	if err != nil {
-		return nil, ErrProfileNotFound
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrProfileNotFound
+		}
+		return nil, fmt.Errorf("get volunteer profile: %w", err)
 	}
 	return profile, nil
 }

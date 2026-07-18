@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"net/url"
@@ -52,8 +53,11 @@ func (s *SubmissionService) SubmitWork(ctx context.Context, taskSlug string, vol
 	}
 
 	app, err := s.applicationRepo.GetApplicationByTaskSlug(ctx, taskSlug, volunteerID)
-	if err != nil || app.Status != "approved" {
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && app.Status != "approved") {
 		return nil, ErrNotApproved
+	}
+	if err != nil {
+		return nil, fmt.Errorf("load volunteer application: %w", err)
 	}
 
 	sub := &volunteer.TaskSubmission{

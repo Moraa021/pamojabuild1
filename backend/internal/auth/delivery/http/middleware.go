@@ -1,15 +1,17 @@
 package http
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 
 	"pamojabuild1/backend/internal/apihttp"
 	"pamojabuild1/backend/internal/auth"
+	authsvc "pamojabuild1/backend/internal/auth/service"
 )
 
-func AuthMiddleware(authService auth.Service, cookieName string) gin.HandlerFunc {
+func AuthMiddleware(service auth.Service, cookieName string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		token, err := c.Cookie(cookieName)
 		if err != nil || token == "" {
@@ -17,9 +19,13 @@ func AuthMiddleware(authService auth.Service, cookieName string) gin.HandlerFunc
 			return
 		}
 
-		user, err := authService.Authenticate(c.Request.Context(), token)
+		user, err := service.Authenticate(c.Request.Context(), token)
 		if err != nil {
-			apihttp.WriteError(c, http.StatusUnauthorized, apihttp.CodeUnauthenticated, "invalid or expired session")
+			if errors.Is(err, authsvc.ErrInvalidSession) {
+				apihttp.WriteError(c, http.StatusUnauthorized, apihttp.CodeUnauthenticated, "invalid or expired session")
+			} else {
+				apihttp.WriteError(c, http.StatusInternalServerError, apihttp.CodeInternal, "could not validate session")
+			}
 			return
 		}
 

@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"errors"
 	"testing"
 
@@ -43,7 +44,7 @@ func (m *mockAuthRepo) Create(_ context.Context, user *auth.User, session *auth.
 func (m *mockAuthRepo) GetByID(_ context.Context, id int64) (*auth.User, error) {
 	user, ok := m.usersByID[id]
 	if !ok {
-		return nil, errors.New("not found")
+		return nil, sql.ErrNoRows
 	}
 	return user, nil
 }
@@ -51,7 +52,7 @@ func (m *mockAuthRepo) GetByID(_ context.Context, id int64) (*auth.User, error) 
 func (m *mockAuthRepo) GetByPhone(_ context.Context, phone string) (*auth.User, error) {
 	user, ok := m.users[phone]
 	if !ok {
-		return nil, errors.New("not found")
+		return nil, sql.ErrNoRows
 	}
 	return user, nil
 }
@@ -59,7 +60,7 @@ func (m *mockAuthRepo) GetByPhone(_ context.Context, phone string) (*auth.User, 
 func (m *mockAuthRepo) CreateSession(_ context.Context, userID int64, session *auth.Session) error {
 	user, ok := m.usersByID[userID]
 	if !ok {
-		return errors.New("not found")
+		return sql.ErrNoRows
 	}
 	m.sessionUsers[string(session.TokenHash)] = user
 	return nil
@@ -68,7 +69,7 @@ func (m *mockAuthRepo) CreateSession(_ context.Context, userID int64, session *a
 func (m *mockAuthRepo) GetBySessionHash(_ context.Context, tokenHash []byte) (*auth.User, error) {
 	user, ok := m.sessionUsers[string(tokenHash)]
 	if !ok {
-		return nil, errors.New("not found")
+		return nil, sql.ErrNoRows
 	}
 	return user, nil
 }
