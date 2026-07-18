@@ -1,1 +1,7 @@
 go.sum
+
+# Local environment files may contain database credentials, Lightning
+# macaroons, and cryptographic secrets. Keep only the safe template tracked.
+.env
+.env.*
+!.env.example

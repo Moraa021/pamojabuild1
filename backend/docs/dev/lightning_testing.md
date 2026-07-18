@@ -178,7 +178,7 @@ createdb pamoja_lightning_manual
 
 export DATABASE_URL='postgres://localhost:5432/pamoja_lightning_manual?sslmode=disable'
 export SERVER_PORT=8080
-export JWT_SECRET=manual-test-jwt-secret
+export SESSION_COOKIE_SECURE=false
 export SERVER_SECRET=manual-test-ledger-secret
 
 go run ./cmd/migrate up
@@ -205,33 +205,33 @@ Run this in the Host API terminal:
 ```bash
 export API="http://localhost:8080/api/v1"
 export PHONE="+1555$(date +%s)"
+export COOKIE_JAR="$(mktemp)"
 
 export REGISTER_RESPONSE=$(curl -sS -X POST "$API/auth/register" \
+  -c "$COOKIE_JAR" \
+  -b "$COOKIE_JAR" \
   -H "Content-Type: application/json" \
   -d "{\"phone_number\":\"$PHONE\",\"password\":\"password123\",\"display_name\":\"Manual Lightning Tester\"}")
 
 echo "$REGISTER_RESPONSE" | jq
 
-export TOKEN=$(echo "$REGISTER_RESPONSE" | jq -r '.token')
 export USER_ID=$(echo "$REGISTER_RESPONSE" | jq -r '.user_id')
 
-echo "$TOKEN"
 echo "$USER_ID"
 ```
 
 Expected result:
 
-- `TOKEN` should be a long string.
+- `COOKIE_JAR` should contain the backend's `pamojabuild_session` cookie.
 - `USER_ID` should be a number.
 
 Create a task:
 
 ```bash
 export TASK_RESPONSE=$(curl -sS -X POST "$API/tasks" \
-  -H "Authorization: Bearer $TOKEN" \
+  -b "$COOKIE_JAR" \
   -H "Content-Type: application/json" \
   -d "{
-    \"creator_id\": $USER_ID,
     \"title\": \"Manual Lightning Test\",
     \"description\": \"Testing LND invoice creation and settlement\",
     \"category\": \"testing\",
@@ -262,7 +262,7 @@ Run:
 
 ```bash
 export INVOICE_RESPONSE=$(curl -sS -X POST "$API/tasks/$TASK_SLUG/donate" \
-  -H "Authorization: Bearer $TOKEN" \
+  -b "$COOKIE_JAR" \
   -H "Content-Type: application/json" \
   -d '{"amount_sats": 1000}')
 
@@ -285,7 +285,7 @@ Check the invoice status:
 
 ```bash
 curl -sS "$API/lightning/invoices/status?payment_hash=$PAYMENT_HASH" \
-  -H "Authorization: Bearer $TOKEN" | jq
+  -b "$COOKIE_JAR" | jq
 ```
 
 Expected result:
@@ -331,7 +331,7 @@ Back in the Host API terminal, poll the invoice status:
 ```bash
 for i in $(seq 1 20); do
   curl -sS "$API/lightning/invoices/status?payment_hash=$PAYMENT_HASH" \
-    -H "Authorization: Bearer $TOKEN" | jq
+    -b "$COOKIE_JAR" | jq
   sleep 1
 done
 ```
@@ -346,7 +346,7 @@ Check the ledger:
 
 ```bash
 curl -sS "$API/ledger/tasks/$TASK_SLUG" \
-  -H "Authorization: Bearer $TOKEN" | jq
+  -b "$COOKIE_JAR" | jq
 ```
 
 Expected result:
@@ -389,10 +389,10 @@ In the Host API terminal:
 
 ```bash
 curl -sS "$API/lightning/invoices/status?payment_hash=$PAYMENT_HASH" \
-  -H "Authorization: Bearer $TOKEN" | jq
+  -b "$COOKIE_JAR" | jq
 
 curl -sS "$API/ledger/tasks/$TASK_SLUG" \
-  -H "Authorization: Bearer $TOKEN" | jq
+  -b "$COOKIE_JAR" | jq
 ```
 
 Expected result:
@@ -416,7 +416,7 @@ Create a new invoice while the backend is running:
 
 ```bash
 export RECOVERY_INVOICE_RESPONSE=$(curl -sS -X POST "$API/tasks/$TASK_SLUG/donate" \
-  -H "Authorization: Bearer $TOKEN" \
+  -b "$COOKIE_JAR" \
   -H "Content-Type: application/json" \
   -d '{"amount_sats": 777}')
 
@@ -446,7 +446,7 @@ Poll the status:
 ```bash
 for i in $(seq 1 20); do
   curl -sS "$API/lightning/invoices/status?payment_hash=$RECOVERY_PAYMENT_HASH" \
-    -H "Authorization: Bearer $TOKEN" | jq
+    -b "$COOKIE_JAR" | jq
   sleep 1
 done
 ```
@@ -460,7 +460,7 @@ Check the ledger:
 
 ```bash
 curl -sS "$API/ledger/tasks/$TASK_SLUG" \
-  -H "Authorization: Bearer $TOKEN" | jq
+  -b "$COOKIE_JAR" | jq
 ```
 
 What happened in the code:
@@ -494,7 +494,7 @@ Create a new invoice and do not pay it:
 
 ```bash
 export EXPIRE_INVOICE_RESPONSE=$(curl -sS -X POST "$API/tasks/$TASK_SLUG/donate" \
-  -H "Authorization: Bearer $TOKEN" \
+  -b "$COOKIE_JAR" \
   -H "Content-Type: application/json" \
   -d '{"amount_sats": 333}')
 
@@ -514,7 +514,7 @@ Now ask the backend for status:
 
 ```bash
 curl -sS "$API/lightning/invoices/status?payment_hash=$EXPIRE_PAYMENT_HASH" \
-  -H "Authorization: Bearer $TOKEN" | jq
+  -b "$COOKIE_JAR" | jq
 ```
 
 Expected result:
@@ -543,7 +543,7 @@ Run:
 
 ```bash
 curl -sS -i -X POST "$API/tasks/$TASK_SLUG/donate" \
-  -H "Authorization: Bearer $TOKEN" \
+  -b "$COOKIE_JAR" \
   -H "Content-Type: application/json" \
   -d '{"amount_sats": 0}'
 ```
@@ -564,7 +564,7 @@ Invalid format:
 
 ```bash
 curl -sS -i "$API/lightning/invoices/status?payment_hash=not-a-hash" \
-  -H "Authorization: Bearer $TOKEN"
+  -b "$COOKIE_JAR"
 ```
 
 Expected result:
@@ -577,7 +577,7 @@ Unknown but valid-looking hash:
 export UNKNOWN_HASH="ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
 
 curl -sS -i "$API/lightning/invoices/status?payment_hash=$UNKNOWN_HASH" \
-  -H "Authorization: Bearer $TOKEN"
+  -b "$COOKIE_JAR"
 ```
 
 Expected result:
@@ -658,7 +658,7 @@ Wait a few seconds, then poll again:
 
 ```bash
 curl -sS "$API/lightning/invoices/status?payment_hash=$PAYMENT_HASH" \
-  -H "Authorization: Bearer $TOKEN" | jq
+  -b "$COOKIE_JAR" | jq
 ```
 
 If it stays pending:

@@ -188,7 +188,7 @@ Some handlers have comments like:
 ```go
 // Register godoc
 // @Summary      Register a new user
-// @Description  Create a new user account using phone number and password, and return a JWT token.
+// @Description  Create a user account and start an HttpOnly cookie session.
 // @Tags         Auth
 // @Accept       json
 // @Produce      json

@@ -18,8 +18,8 @@ Status key: `NEXT`, `PENDING`, `DONE`, `BLOCKED`.
 ## Implementation order
 
 1. **`DONE` — PostgreSQL and migrations:** The application is PostgreSQL-only, uses a clean versioned baseline with `golang-migrate` up/down migrations, never migrates during API startup, and runs database integration tests against PostgreSQL through `TEST_DATABASE_URL`.
-2. **`NEXT` — Accounts and authorization:** Replace permanent creator/volunteer/trustee roles with task relationships, retain only genuine global capabilities such as admin, derive actor IDs from authentication, and enforce ownership and conflict rules.
-3. **`PENDING` — API contracts:** Standardize request/response DTOs, errors, validation, and OpenAPI documentation.
+2. **`DONE` — Accounts and authorization:** Accounts are general, admin is the only global capability, authentication uses revocable server-side sessions in secure HttpOnly cookies, actor IDs come from authentication, trustee payout routes require task membership, and PostgreSQL enforces the trustee/volunteer conflict.
+3. **`NEXT` — API contracts:** Standardize request/response DTOs, errors, validation, and OpenAPI documentation.
 4. **`PENDING` — Task state machines:** Enforce work and financial transitions with authorization, conditional updates, history, idempotency, and recovery rules.
 5. **`PENDING` — Trustee onboarding:** Implement nomination, acceptance, unique membership, key proof/validation, public roster data, replacement, and rotation.
 6. **`PENDING` — Volunteer workflow:** Implement self-assignment, applications, selection, capacity, submissions, evidence review, verification, and conflict-safe completion.

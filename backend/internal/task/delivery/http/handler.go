@@ -28,6 +28,12 @@ func NewTaskHandler(service task.Service) *TaskHandler {
 // @Failure      500   {object}  map[string]string
 // @Router       /api/v1/tasks [post]
 func (h *TaskHandler) CreateTask(c *gin.Context) {
+	creatorID := c.GetInt64("user_id")
+	if creatorID <= 0 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "authenticated account required"})
+		return
+	}
+
 	var req CreateTaskRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -35,7 +41,9 @@ func (h *TaskHandler) CreateTask(c *gin.Context) {
 	}
 
 	t := &task.Task{
-		CreatorID:      req.CreatorID,
+		// Ownership comes from the verified token. Accepting creator_id from
+		// JSON would let a caller create campaigns in another user's name.
+		CreatorID:      creatorID,
 		Title:          req.Title,
 		Description:    req.Description,
 		Category:       req.Category,

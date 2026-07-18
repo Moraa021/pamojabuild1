@@ -17,9 +17,9 @@ func Seed(ctx context.Context, database *sql.DB) error {
 	defer tx.Rollback()
 
 	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO users (email, password_hash, display_name, role)
-		VALUES ('alice@example.com', 'hashed', 'Alice', 'volunteer')
-		ON CONFLICT (email) DO NOTHING`); err != nil {
+		INSERT INTO users (phone_number, password_hash, display_name)
+		VALUES ('+254700000001', 'hashed', 'Alice')
+		ON CONFLICT (phone_number) DO NOTHING`); err != nil {
 		return fmt.Errorf("seed user: %w", err)
 	}
 
@@ -27,7 +27,7 @@ func Seed(ctx context.Context, database *sql.DB) error {
 		INSERT INTO tasks (slug, creator_id, title, description)
 		SELECT 'sample-task', id, 'Sample Task', 'A seeded task'
 		FROM users
-		WHERE email = 'alice@example.com'
+		WHERE phone_number = '+254700000001'
 		ON CONFLICT (slug) DO NOTHING`); err != nil {
 		return fmt.Errorf("seed task: %w", err)
 	}
@@ -36,7 +36,7 @@ func Seed(ctx context.Context, database *sql.DB) error {
 		INSERT INTO volunteer_profiles (user_id, bio, skills)
 		SELECT id, 'Seeded user', '[]'::jsonb
 		FROM users
-		WHERE email = 'alice@example.com'
+		WHERE phone_number = '+254700000001'
 		ON CONFLICT (user_id) DO NOTHING`); err != nil {
 		return fmt.Errorf("seed volunteer profile: %w", err)
 	}

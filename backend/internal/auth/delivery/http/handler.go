@@ -1,27 +1,36 @@
 package http
 
 import (
+	"errors"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
 	"pamojabuild1/backend/internal/auth"
+	authService "pamojabuild1/backend/internal/auth/service"
 )
 
 type AuthHandler struct {
-	service auth.Service
+	service      auth.Service
+	cookieName   string
+	cookieSecure bool
 }
 
-func NewAuthHandler(service auth.Service) *AuthHandler {
-	return &AuthHandler{service: service}
+func NewAuthHandler(service auth.Service, cookieName string, cookieSecure bool) *AuthHandler {
+	return &AuthHandler{
+		service:      service,
+		cookieName:   cookieName,
+		cookieSecure: cookieSecure,
+	}
 }
 
 // Register godoc
 // @Summary      Register a new user
-// @Description  Create a new user account using phone number and password, and return a JWT token.
+// @Description  Create a user account and start an HttpOnly cookie session.
 // @Tags         Auth
 // @Accept       json
-// @Produce      json	
+// @Produce      json
 // @Param        body  body      RegisterRequest  true  "Registration payload"
 // @Success      201   {object}  AuthResponse
 // @Failure      400   {object}  ErrorResponse
@@ -34,23 +43,28 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
-	user, token, err := h.service.Register(c.Request.Context(), req.PhoneNumber, req.Password, req.DisplayName)
+	session, err := h.service.Register(c.Request.Context(), req.PhoneNumber, req.Password, req.DisplayName)
 	if err != nil {
-		c.JSON(http.StatusConflict, ErrorResponse{Error: "registration_failed", Message: err.Error()})
+		status := http.StatusBadRequest
+		if errors.Is(err, authService.ErrUserExists) {
+			status = http.StatusConflict
+		}
+		c.JSON(status, ErrorResponse{Error: "registration_failed", Message: err.Error()})
 		return
 	}
 
+	h.setSessionCookie(c, session)
 	c.JSON(http.StatusCreated, AuthResponse{
-		Token:       token,
-		UserID:      user.ID,
-		Role:        user.Role,
-		DisplayName: user.DisplayName,
+		UserID:      session.User.ID,
+		IsAdmin:     session.User.IsAdmin,
+		DisplayName: session.User.DisplayName,
+		ExpiresAt:   session.ExpiresAt,
 	})
 }
 
 // SignIn godoc
 // @Summary      Sign in a user
-// @Description  Authenticate with phone number and password to receive a JWT token.
+// @Description  Authenticate with phone number and password and start an HttpOnly cookie session.
 // @Tags         Auth
 // @Accept       json
 // @Produce      json
@@ -66,27 +80,62 @@ func (h *AuthHandler) SignIn(c *gin.Context) {
 		return
 	}
 
-	user, token, err := h.service.SignIn(c.Request.Context(), req.PhoneNumber, req.Password)
+	session, err := h.service.SignIn(c.Request.Context(), req.PhoneNumber, req.Password)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, ErrorResponse{Error: "auth_failed", Message: "Invalid credentials"})
 		return
 	}
 
+	h.setSessionCookie(c, session)
 	c.JSON(http.StatusOK, AuthResponse{
-		Token:       token,
-		UserID:      user.ID,
-		Role:        user.Role,
-		DisplayName: user.DisplayName,
+		UserID:      session.User.ID,
+		IsAdmin:     session.User.IsAdmin,
+		DisplayName: session.User.DisplayName,
+		ExpiresAt:   session.ExpiresAt,
 	})
 }
 
 // SignOut godoc
 // @Summary      Sign out the current user
-// @Description  Invalidate the current session token or clear authentication state.
+// @Description  Revoke the current server-side session and clear its cookie.
 // @Tags         Auth
 // @Produce      json
-// @Success      200  {object}  map[string]string
+// @Success      204
+// @Failure      500  {object}  ErrorResponse
+// @Security     CookieAuth
 // @Router       /api/v1/auth/signout [post]
 func (h *AuthHandler) SignOut(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"message": "Signed out successfully"})
+	token := c.GetString("session_token")
+	if err := h.service.SignOut(c.Request.Context(), token); err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "signout_failed", Message: "Could not revoke session"})
+		return
+	}
+	h.clearSessionCookie(c)
+	c.Status(http.StatusNoContent)
+}
+
+func (h *AuthHandler) setSessionCookie(c *gin.Context, session *auth.Session) {
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     h.cookieName,
+		Value:    session.Token,
+		Path:     "/",
+		Expires:  session.ExpiresAt,
+		MaxAge:   int(time.Until(session.ExpiresAt).Seconds()),
+		HttpOnly: true,
+		Secure:   h.cookieSecure,
+		SameSite: http.SameSiteLaxMode,
+	})
+}
+
+func (h *AuthHandler) clearSessionCookie(c *gin.Context) {
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     h.cookieName,
+		Value:    "",
+		Path:     "/",
+		Expires:  time.Unix(1, 0),
+		MaxAge:   -1,
+		HttpOnly: true,
+		Secure:   h.cookieSecure,
+		SameSite: http.SameSiteLaxMode,
+	})
 }

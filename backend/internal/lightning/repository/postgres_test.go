@@ -15,8 +15,8 @@ func newTestLightningRepository(t *testing.T) *LightningRepository {
 	database := testsupport.NewPostgresDatabase(t)
 	var userID int64
 	if err := database.QueryRow(`
-		INSERT INTO users (email, password_hash, display_name)
-		VALUES ('lightning-repository@example.com', 'test-hash', 'Lightning Repository')
+		INSERT INTO users (phone_number, password_hash, display_name)
+		VALUES ('+254700000099', 'test-hash', 'Lightning Repository')
 		RETURNING id`).Scan(&userID); err != nil {
 		t.Fatalf("create Lightning repository test user: %v", err)
 	}

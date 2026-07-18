@@ -25,8 +25,7 @@ type VolunteerProfileResponse struct {
 }
 
 type TaskApplicationRequest struct {
-	VolunteerID int64  `json:"volunteer_id" binding:"required"`
-	Message     string `json:"message" binding:"required"`
+	Message string `json:"message" binding:"required"`
 }
 
 type TaskApplicationResponse struct {
