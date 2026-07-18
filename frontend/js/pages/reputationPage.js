@@ -7,10 +7,10 @@ import { formatSats } from '../utils/utils.js';
 export async function renderReputationPage(container) {
   container.innerHTML = `
     <section class="reputation-page container">
-      <header class="page-header">
-        <h1>Reputation</h1>
-        <p class="page-header__sub">Your volunteer track record, computed from verified backend data.</p>
-      </header>
+      <div class="page-intro">
+        <h1 class="page-intro__title">Reputation</h1>
+        <p class="page-intro__desc">Your volunteer track record, computed from verified backend data.</p>
+      </div>
       <div id="rep-error"></div>
       <div id="rep-loading"></div>
     </section>
@@ -47,38 +47,45 @@ export async function renderReputationPage(container) {
 
   section.innerHTML += `
     <div class="reputation-page__layout">
-      <div class="rep-hero">
+      <!-- Score hero card -->
+      <div class="card rep-hero">
         <div id="rep-badge-hero"></div>
         <h2 class="rep-hero__name">${esc(profile.display_name)}</h2>
         <p class="rep-hero__score-label">Overall reputation score</p>
         <p class="rep-hero__score">${profile.reputation_score.toLocaleString()}</p>
       </div>
 
-      <div class="rep-metrics">
-        <h2 class="dash-section__title">Metrics</h2>
-        <dl class="rep-metrics__grid">
-          <div class="rep-metric">
-            <dt>Completed tasks</dt>
-            <dd>${completedTasks}</dd>
-          </div>
-          <div class="rep-metric">
-            <dt>Total earned</dt>
-            <dd class="value-sats">${formatSats(totalEarned)}</dd>
-          </div>
-          <div class="rep-metric">
-            <dt>Applications submitted</dt>
-            <dd>${applications.length}</dd>
-          </div>
-          <div class="rep-metric">
-            <dt>Approval rate</dt>
-            <dd>
-              <div class="rep-bar" role="progressbar" aria-valuenow="${approvalRate}" aria-valuemin="0" aria-valuemax="100">
-                <div class="rep-bar__fill" style="width: ${approvalRate}%"></div>
-              </div>
-              <span>${approvalRate}%</span>
-            </dd>
-          </div>
-        </dl>
+      <!-- Metrics card -->
+      <div class="card">
+        <div class="card__header">
+          <span class="card__title">Performance Metrics</span>
+          <span class="card__description">Based on your verified task completions</span>
+        </div>
+        <div class="card__content">
+          <dl class="rep-metrics__grid">
+            <div class="rep-metric">
+              <dt>Completed tasks</dt>
+              <dd>${completedTasks}</dd>
+            </div>
+            <div class="rep-metric">
+              <dt>Total earned</dt>
+              <dd class="value-sats">${formatSats(totalEarned)}</dd>
+            </div>
+            <div class="rep-metric">
+              <dt>Applications submitted</dt>
+              <dd>${applications.length}</dd>
+            </div>
+            <div class="rep-metric">
+              <dt>Approval rate</dt>
+              <dd>
+                <div class="rep-bar" role="progressbar" aria-valuenow="${approvalRate}" aria-valuemin="0" aria-valuemax="100">
+                  <div class="rep-bar__fill" style="width: ${approvalRate}%"></div>
+                </div>
+                <span>${approvalRate}%</span>
+              </dd>
+            </div>
+          </dl>
+        </div>
       </div>
     </div>
   `;
