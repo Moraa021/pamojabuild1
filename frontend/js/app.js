@@ -26,27 +26,87 @@ import { renderVolunteerPaymentsPage }      from './pages/volunteerPaymentPage.j
 import { renderReputationPage }             from './pages/reputationPage.js';
 
 function renderHomePage(container) {
+  const year = new Date().getFullYear();
   container.innerHTML = `
-    <section class="home container">
-      <div class="home__hero">
-        <h1 class="home__headline">Fund volunteers with Bitcoin</h1>
-        <p class="home__sub">
-          Create a campaign, raise sats via Lightning, and release funds through a
-          transparent 3-of-5 multi-sig payout reviewed by independent trustees.
-        </p>
-        <div class="home__actions">
-          <a href="/volunteer/tasks" class="btn btn--primary btn--lg">Browse tasks</a>
-          <a href="/campaigns/new"   class="btn btn--ghost btn--lg">Create a campaign</a>
+    <div class="page-layout">
+      <main class="page-layout__content" style="padding:0">
+
+        <!-- Hero -->
+        <section class="home__hero-panel">
+          <div class="home__hero-grid-bg" aria-hidden="true"></div>
+          <div class="home__hero-gradient" aria-hidden="true"></div>
+          <div class="home__hero-inner">
+            <div class="home__hero-badge">
+              ⚡ Powered by Bitcoin Lightning Network
+            </div>
+            <h1 class="home__headline">
+              Where Community Work Meets
+              <span class="home__headline-accent"> Real Money</span>
+            </h1>
+            <p class="home__sub">
+              A trustless platform for funding volunteers. Campaigns raise sats via Lightning invoices,
+              releasing funds through transparent 3-of-5 multi-sig payouts.
+            </p>
+            <div class="home__actions">
+              <a href="/volunteer/tasks" class="btn btn--primary btn--lg">
+                Browse Tasks →
+              </a>
+              <a href="/campaigns/new" class="btn btn--ghost btn--lg">
+                Create Campaign
+              </a>
+            </div>
+          </div>
+        </section>
+
+        <!-- How it works -->
+        <section class="home__how">
+          <div class="container">
+            <div class="home__how-header">
+              <h2 class="home__how-title">A precise, trustless workflow</h2>
+              <p class="home__how-sub">No middlemen. Code is law. Volunteer work verified by cryptography.</p>
+            </div>
+            <div class="home__how-grid">
+              <div class="home__how-card">
+                <div class="home__how-icon home__how-icon--blue" aria-hidden="true">₿</div>
+                <h3 class="home__how-card-title">1. Fund via Lightning</h3>
+                <p class="home__how-card-desc">
+                  Anyone can donate sats to an open campaign instantly and cheaply using the Lightning Network.
+                </p>
+              </div>
+              <div class="home__how-card">
+                <div class="home__how-icon home__how-icon--green" aria-hidden="true">👥</div>
+                <h3 class="home__how-card-title">2. Work &amp; Verify</h3>
+                <p class="home__how-card-desc">
+                  Volunteers apply, work, and submit evidence. A decentralized group of trustees reviews the work.
+                </p>
+              </div>
+              <div class="home__how-card">
+                <div class="home__how-icon home__how-icon--purple" aria-hidden="true">🛡</div>
+                <h3 class="home__how-card-title">3. Multi-Sig Payout</h3>
+                <p class="home__how-card-desc">
+                  Trustees sign a PSBT. Once 3 of 5 sign, the funds are trustlessly released to the volunteer.
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+      </main>
+
+      <footer class="site-footer">
+        <div class="container site-footer__inner">
+          &copy; ${year} PamojaBuild. Powered by Bitcoin.
         </div>
-      </div>
-    </section>
+      </footer>
+    </div>
   `;
 }
 
 function mountNavbar() {
-  const role  = authStore.state.role || ROLES.GUEST;
-  const links = ROLE_NAV[role]        || ROLE_NAV[ROLES.GUEST];
-  const navbar = new Navbar({ logoText: 'VolunteerTasks', links });
+  const { role, name } = authStore.state;
+  const activeRole  = role  || ROLES.GUEST;
+  const links       = ROLE_NAV[activeRole] || ROLE_NAV[ROLES.GUEST];
+  const navbar = new Navbar({ logoText: 'PamojaBuild', links, role: activeRole, name });
   const existing = document.querySelector('.navbar');
   if (existing) existing.replaceWith(navbar.element);
   else document.body.prepend(navbar.element);
