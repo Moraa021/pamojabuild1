@@ -2,46 +2,16 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"errors"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
-	"sort"
 	"syscall"
 	"time"
 
 	"pamojabuild1/backend/internal/config"
 )
-
-func runMigrations(db *sql.DB, dir string) error {
-	files, err := os.ReadDir(dir)
-	if err != nil {
-		return err
-	}
-	var sqlFiles []string
-	for _, f := range files {
-		if filepath.Ext(f.Name()) == ".sql" {
-			sqlFiles = append(sqlFiles, f.Name())
-		}
-	}
-	sort.Strings(sqlFiles)
-	for _, f := range sqlFiles {
-		content, err := os.ReadFile(filepath.Join(dir, f))
-		if err != nil {
-			return err
-		}
-		log.Printf("Running migration: %s", f)
-		if _, err := db.Exec(string(content)); err != nil {
-			return fmt.Errorf("migration %s failed: %w", f, err)
-		}
-	}
-	log.Println("Migrations complete")
-	return nil
-}
 
 func main() {
 	cfg := config.Load()
@@ -53,10 +23,6 @@ func main() {
 		log.Fatal("Failed to connect to database:", err)
 	}
 	defer db.Close()
-
-	if err := runMigrations(db, "db/migrations"); err != nil {
-		log.Printf("Warning: migration error: %v", err)
-	}
 
 	router := NewRouterWithContext(ctx, db, cfg)
 	server := &http.Server{

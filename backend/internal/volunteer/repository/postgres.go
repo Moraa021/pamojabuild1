@@ -40,13 +40,13 @@ func (r *VolunteerRepository) Create(ctx context.Context, profile *volunteer.Vol
 	query := `
 		INSERT INTO volunteer_profiles (user_id, bio, skills, lightning_address, onchain_address, created_at, updated_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)`
-	
+
 	now := time.Now()
 	profile.CreatedAt = now
 	profile.UpdatedAt = now
-	
+
 	_, err := r.db.ExecContext(ctx, query,
-		profile.UserID, profile.Bio, skillsJSON, profile.LightningAddress, profile.OnchainAddress, now, now,
+		profile.UserID, profile.Bio, string(skillsJSON), profile.LightningAddress, profile.OnchainAddress, now, now,
 	)
 	return err
 }
@@ -54,12 +54,12 @@ func (r *VolunteerRepository) Create(ctx context.Context, profile *volunteer.Vol
 func (r *VolunteerRepository) GetByUserID(ctx context.Context, userID int64) (*volunteer.VolunteerProfile, error) {
 	profile := &volunteer.VolunteerProfile{}
 	var skillsJSON []byte
-	
+
 	query := `
 		SELECT user_id, bio, skills, lightning_address, onchain_address, 
 		       reputation_score, tier, completed_tasks, total_earned_sats, created_at, updated_at
 		FROM volunteer_profiles WHERE user_id = $1`
-	
+
 	err := r.db.QueryRowContext(ctx, query, userID).Scan(
 		&profile.UserID, &profile.Bio, &skillsJSON, &profile.LightningAddress,
 		&profile.OnchainAddress, &profile.ReputationScore, &profile.Tier,
@@ -68,7 +68,7 @@ func (r *VolunteerRepository) GetByUserID(ctx context.Context, userID int64) (*v
 	if err != nil {
 		return nil, err
 	}
-	
+
 	json.Unmarshal(skillsJSON, &profile.Skills)
 	return profile, nil
 }
@@ -79,9 +79,9 @@ func (r *VolunteerRepository) Update(ctx context.Context, profile *volunteer.Vol
 		UPDATE volunteer_profiles 
 		SET bio = $1, skills = $2, lightning_address = $3, onchain_address = $4, updated_at = $5
 		WHERE user_id = $6`
-	
+
 	_, err := r.db.ExecContext(ctx, query,
-		profile.Bio, skillsJSON, profile.LightningAddress, profile.OnchainAddress,
+		profile.Bio, string(skillsJSON), profile.LightningAddress, profile.OnchainAddress,
 		time.Now(), profile.UserID,
 	)
 	return err
@@ -93,10 +93,10 @@ func (r *VolunteerRepository) CreateApplication(ctx context.Context, app *volunt
 		INSERT INTO task_applications (task_slug, volunteer_id, message, status, applied_at)
 		VALUES ($1, $2, $3, $4, $5)
 		RETURNING id`
-	
+
 	app.AppliedAt = time.Now()
 	app.Status = "pending"
-	
+
 	return r.db.QueryRowContext(ctx, query,
 		app.TaskSlug, app.VolunteerID, app.Message, app.Status, app.AppliedAt,
 	).Scan(&app.ID)
@@ -113,7 +113,7 @@ func (r *VolunteerRepository) GetApplicationsByVolunteerID(ctx context.Context, 
 		return nil, err
 	}
 	defer rows.Close()
-	
+
 	var applications []volunteer.TaskApplication
 	for rows.Next() {
 		var app volunteer.TaskApplication
@@ -123,17 +123,17 @@ func (r *VolunteerRepository) GetApplicationsByVolunteerID(ctx context.Context, 
 		}
 		applications = append(applications, app)
 	}
-	
+
 	return applications, nil
 }
 
 func (r *VolunteerRepository) GetApplicationByTaskSlug(ctx context.Context, taskSlug string, volunteerID int64) (*volunteer.TaskApplication, error) {
 	app := &volunteer.TaskApplication{}
-	
+
 	query := `
 		SELECT id, task_slug, volunteer_id, message, status, applied_at, reviewed_at
 		FROM task_applications WHERE task_slug = $1 AND volunteer_id = $2`
-	
+
 	err := r.db.QueryRowContext(ctx, query, taskSlug, volunteerID).Scan(
 		&app.ID, &app.TaskSlug, &app.VolunteerID, &app.Message,
 		&app.Status, &app.AppliedAt, &app.ReviewedAt,
@@ -141,7 +141,7 @@ func (r *VolunteerRepository) GetApplicationByTaskSlug(ctx context.Context, task
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return app, nil
 }
 
@@ -158,12 +158,12 @@ func (r *VolunteerRepository) CreateSubmission(ctx context.Context, sub *volunte
 		INSERT INTO task_submissions (task_slug, volunteer_id, description, evidence_urls, status, submitted_at)
 		VALUES ($1, $2, $3, $4, $5, $6)
 		RETURNING id`
-	
+
 	sub.SubmittedAt = time.Now()
 	sub.Status = "submitted"
-	
+
 	return r.db.QueryRowContext(ctx, query,
-		sub.TaskSlug, sub.VolunteerID, sub.Description, evidenceJSON, sub.Status, sub.SubmittedAt,
+		sub.TaskSlug, sub.VolunteerID, sub.Description, string(evidenceJSON), sub.Status, sub.SubmittedAt,
 	).Scan(&sub.ID)
 }
 
@@ -172,13 +172,13 @@ func (r *VolunteerRepository) GetSubmissionsByVolunteerID(ctx context.Context, v
 		SELECT id, task_slug, volunteer_id, description, evidence_urls, status, submitted_at, reviewed_at
 		FROM task_submissions WHERE volunteer_id = $1
 		ORDER BY submitted_at DESC`
-	
+
 	rows, err := r.db.QueryContext(ctx, query, volunteerID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	
+
 	var submissions []volunteer.TaskSubmission
 	for rows.Next() {
 		var sub volunteer.TaskSubmission
@@ -190,18 +190,18 @@ func (r *VolunteerRepository) GetSubmissionsByVolunteerID(ctx context.Context, v
 		json.Unmarshal(evidenceJSON, &sub.EvidenceURLs)
 		submissions = append(submissions, sub)
 	}
-	
+
 	return submissions, nil
 }
 
 func (r *VolunteerRepository) GetSubmissionByTaskSlug(ctx context.Context, taskSlug string, volunteerID int64) (*volunteer.TaskSubmission, error) {
 	sub := &volunteer.TaskSubmission{}
 	var evidenceJSON []byte
-	
+
 	query := `
 		SELECT id, task_slug, volunteer_id, description, evidence_urls, status, submitted_at, reviewed_at
 		FROM task_submissions WHERE task_slug = $1 AND volunteer_id = $2`
-	
+
 	err := r.db.QueryRowContext(ctx, query, taskSlug, volunteerID).Scan(
 		&sub.ID, &sub.TaskSlug, &sub.VolunteerID, &sub.Description,
 		&evidenceJSON, &sub.Status, &sub.SubmittedAt, &sub.ReviewedAt,
@@ -209,7 +209,7 @@ func (r *VolunteerRepository) GetSubmissionByTaskSlug(ctx context.Context, taskS
 	if err != nil {
 		return nil, err
 	}
-	
+
 	json.Unmarshal(evidenceJSON, &sub.EvidenceURLs)
 	return sub, nil
 }
@@ -226,7 +226,7 @@ func (r *VolunteerRepository) CreatePayment(ctx context.Context, payment *volunt
 		INSERT INTO volunteer_payments (task_slug, volunteer_id, amount_sats, payment_method, status, transaction_hash, paid_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		RETURNING id`
-	
+
 	return r.db.QueryRowContext(ctx, query,
 		payment.TaskSlug, payment.VolunteerID, payment.AmountSats,
 		payment.PaymentMethod, payment.Status, payment.TransactionHash, payment.PaidAt,
@@ -238,13 +238,13 @@ func (r *VolunteerRepository) GetPaymentsByVolunteerID(ctx context.Context, volu
 		SELECT id, task_slug, volunteer_id, amount_sats, payment_method, status, transaction_hash, paid_at
 		FROM volunteer_payments WHERE volunteer_id = $1
 		ORDER BY paid_at DESC NULLS LAST`
-	
+
 	rows, err := r.db.QueryContext(ctx, query, volunteerID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	
+
 	var payments []volunteer.Payment
 	for rows.Next() {
 		var p volunteer.Payment
@@ -254,7 +254,7 @@ func (r *VolunteerRepository) GetPaymentsByVolunteerID(ctx context.Context, volu
 		}
 		payments = append(payments, p)
 	}
-	
+
 	return payments, nil
 }
 

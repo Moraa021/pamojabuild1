@@ -1,5 +1,0 @@
-CREATE TABLE IF NOT EXISTS lightning_sync_state (
-    key VARCHAR(128) PRIMARY KEY,
-    value_integer INTEGER NOT NULL,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-);

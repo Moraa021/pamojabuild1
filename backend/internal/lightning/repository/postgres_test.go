@@ -2,51 +2,31 @@ package repository
 
 import (
 	"context"
-	"database/sql"
 	"testing"
 	"time"
 
-	_ "modernc.org/sqlite"
-
 	"pamojabuild1/backend/internal/lightning"
+	"pamojabuild1/backend/internal/testsupport"
 )
 
 func newTestLightningRepository(t *testing.T) *LightningRepository {
 	t.Helper()
 
-	db, err := sql.Open("sqlite", ":memory:")
-	if err != nil {
-		t.Fatalf("failed to open sqlite database: %v", err)
+	database := testsupport.NewPostgresDatabase(t)
+	var userID int64
+	if err := database.QueryRow(`
+		INSERT INTO users (email, password_hash, display_name)
+		VALUES ('lightning-repository@example.com', 'test-hash', 'Lightning Repository')
+		RETURNING id`).Scan(&userID); err != nil {
+		t.Fatalf("create Lightning repository test user: %v", err)
 	}
-	t.Cleanup(func() {
-		db.Close()
-	})
-
-	schema := `
-		CREATE TABLE lightning_invoices (
-			payment_request TEXT NOT NULL,
-			payment_hash VARCHAR(255) PRIMARY KEY,
-			amount_sats INTEGER NOT NULL,
-			task_slug VARCHAR(255),
-			settled INTEGER DEFAULT 0,
-			settled_at TIMESTAMP,
-			status VARCHAR(32) NOT NULL DEFAULT 'pending',
-			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			expires_at TIMESTAMP,
-			add_index INTEGER NOT NULL DEFAULT 0,
-			settle_index INTEGER NOT NULL DEFAULT 0
-		);
-
-		CREATE TABLE lightning_sync_state (
-			key VARCHAR(128) PRIMARY KEY,
-			value_integer INTEGER NOT NULL,
-			updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-		);`
-	if _, err := db.Exec(schema); err != nil {
-		t.Fatalf("failed to create lightning test schema: %v", err)
+	if _, err := database.Exec(`
+		INSERT INTO tasks (slug, creator_id, title)
+		VALUES ('task1', $1, 'Lightning Repository Task')`, userID); err != nil {
+		t.Fatalf("create Lightning repository test task: %v", err)
 	}
 
-	return NewLightningRepository(db)
+	return NewLightningRepository(database)
 }
 
 func TestLightningRepositorySettlementCursorOnlyMovesForward(t *testing.T) {

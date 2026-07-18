@@ -20,8 +20,10 @@ type Config struct {
 
 func Load() *Config {
 	return &Config{
-		ServerPort:     getEnv("SERVER_PORT", "8080"),
-		DatabaseURL:    getEnv("DATABASE_URL", "/tmp/pamoja.db"),
+		ServerPort: getEnv("SERVER_PORT", "8080"),
+		// DATABASE_URL intentionally has no fallback. Silently starting with a
+		// local database can split financial state between environments.
+		DatabaseURL:    getEnv("DATABASE_URL", ""),
 		JWTSecret:      getEnv("JWT_SECRET", "your-secret-key"),
 		LNDClientMode:  getEnv("LND_CLIENT_MODE", "grpc"),
 		LNDHost:        getEnv("LND_HOST", "localhost:10009"),

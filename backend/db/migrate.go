@@ -1,55 +1,43 @@
 package db
 
 import (
-	"database/sql"
+	"errors"
 	"fmt"
-	"io/ioutil"
-	"log"
-	"os"
 	"path/filepath"
-	"sort"
+
+	"github.com/golang-migrate/migrate/v4"
+	_ "github.com/golang-migrate/migrate/v4/database/postgres"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
 )
 
-func RunMigrations(db *sql.DB, migrationsPath string) error {
-	files, err := ioutil.ReadDir(migrationsPath)
+// NewMigrator creates the versioned migration runner used by the deployment
+// command and PostgreSQL integration tests. Keeping migration execution outside
+// API startup prevents one application replica from racing another over DDL.
+func NewMigrator(databaseURL, migrationsPath string) (*migrate.Migrate, error) {
+	if databaseURL == "" {
+		return nil, errors.New("DATABASE_URL is required")
+	}
+	if migrationsPath == "" {
+		return nil, errors.New("migrations path is required")
+	}
+
+	absolutePath, err := filepath.Abs(migrationsPath)
 	if err != nil {
-		return fmt.Errorf("failed to read migrations directory: %w", err)
+		return nil, fmt.Errorf("resolve migrations path: %w", err)
 	}
 
-	var migrationFiles []string
-	for _, file := range files {
-		if filepath.Ext(file.Name()) == ".sql" {
-			migrationFiles = append(migrationFiles, file.Name())
-		}
+	runner, err := migrate.New("file://"+filepath.ToSlash(absolutePath), databaseURL)
+	if err != nil {
+		return nil, fmt.Errorf("create migration runner: %w", err)
 	}
-	sort.Strings(migrationFiles)
+	return runner, nil
+}
 
-	for _, fileName := range migrationFiles {
-		filePath := filepath.Join(migrationsPath, fileName)
-		content, err := os.ReadFile(filePath)
-		if err != nil {
-			return fmt.Errorf("failed to read migration file %s: %w", fileName, err)
-		}
-
-		log.Printf("Running migration: %s", fileName)
-		tx, err := db.Begin()
-		if err != nil {
-			return fmt.Errorf("failed to begin transaction for migration %s: %w", fileName, err)
-		}
-
-		if _, err := tx.Exec(string(content)); err != nil {
-			rollbackErr := tx.Rollback()
-			if rollbackErr != nil {
-				log.Printf("rollback failed after migration error: %v", rollbackErr)
-			}
-			return fmt.Errorf("failed to execute migration %s: %w", fileName, err)
-		}
-
-		if err := tx.Commit(); err != nil {
-			return fmt.Errorf("failed to commit migration %s: %w", fileName, err)
-		}
+// IgnoreNoChange turns golang-migrate's normal "already at this version"
+// result into success without hiding real migration failures.
+func IgnoreNoChange(err error) error {
+	if errors.Is(err, migrate.ErrNoChange) {
+		return nil
 	}
-
-	log.Println("All migrations completed successfully")
-	return nil
+	return err
 }

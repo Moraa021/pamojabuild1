@@ -132,8 +132,9 @@ func (r *LightningRepository) AdvanceSettlementCursor(ctx context.Context, settl
 		VALUES ($1, $2, CURRENT_TIMESTAMP)
 		ON CONFLICT(key) DO UPDATE SET
 			value_integer = CASE
-				WHEN value_integer < excluded.value_integer THEN excluded.value_integer
-				ELSE value_integer
+				WHEN lightning_sync_state.value_integer < EXCLUDED.value_integer
+					THEN EXCLUDED.value_integer
+				ELSE lightning_sync_state.value_integer
 			END,
 			updated_at = CURRENT_TIMESTAMP`
 	_, err := r.db.ExecContext(ctx, query, settlementCursorKey, settleIndex)

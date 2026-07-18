@@ -13,11 +13,14 @@ clean:
 	cd backend && rm -rf bin/
 
 migrate:
-	cd backend && go run cmd/app/main.go --migrate
+	cd backend && go run ./cmd/migrate up
+
+migrate-down:
+	cd backend && go run ./cmd/migrate down 1
 
 db-setup:
 	createdb pamoja
-	cd backend && go run cmd/app/main.go --migrate
+	cd backend && go run ./cmd/migrate up
 
 deps:
 	cd backend && go mod tidy

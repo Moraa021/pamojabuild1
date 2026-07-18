@@ -6,12 +6,12 @@ require (
 	github.com/gin-gonic/gin v1.12.0
 	github.com/go-playground/validator/v10 v10.30.1
 	github.com/golang-jwt/jwt/v5 v5.3.1
+	github.com/golang-migrate/migrate/v4 v4.17.0
 	github.com/gosimple/slug v1.15.0
-	github.com/lib/pq v1.12.3
+	github.com/jackc/pgx/v5 v5.7.4
 	github.com/lightningnetwork/lnd v0.20.2-beta
 	golang.org/x/crypto v0.53.0
 	google.golang.org/grpc v1.82.0
-	modernc.org/sqlite v1.53.0
 )
 
 require (
@@ -69,7 +69,6 @@ require (
 	github.com/gofrs/uuid v4.4.0+incompatible // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang-jwt/jwt/v4 v4.5.2 // indirect
-	github.com/golang-migrate/migrate/v4 v4.17.0 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/google/btree v1.0.1 // indirect
@@ -92,7 +91,6 @@ require (
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/pgtype v1.14.4 // indirect
 	github.com/jackc/pgx/v4 v4.18.3 // indirect
-	github.com/jackc/pgx/v5 v5.7.4 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/jessevdk/go-flags v1.4.0 // indirect
 	github.com/jonboulle/clockwork v0.2.2 // indirect
@@ -106,6 +104,7 @@ require (
 	github.com/klauspost/compress v1.17.9 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
+	github.com/lib/pq v1.12.3 // indirect
 	github.com/lightninglabs/gozmq v0.0.0-20191113021534-d20a764486bf // indirect
 	github.com/lightninglabs/neutrino v0.16.1 // indirect
 	github.com/lightninglabs/neutrino/cache v1.1.2 // indirect
@@ -201,6 +200,7 @@ require (
 	modernc.org/libc v1.73.4 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
+	modernc.org/sqlite v1.53.0 // indirect
 	pgregory.net/rapid v1.2.0 // indirect
 	sigs.k8s.io/yaml v1.2.0 // indirect
 )
