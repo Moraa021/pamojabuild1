@@ -9,10 +9,10 @@ const FIN_ORDER    = ['ACTIVE', 'LIQUIDATING', 'READY_FOR_PAYOUT', 'SYSTEM_LOCKD
 export async function renderAdminPage(container) {
   container.innerHTML = `
     <section class="admin-page container">
-      <header class="page-header">
-        <h1>Admin Overview</h1>
-        <p class="page-header__sub">System-wide task and financial state summary.</p>
-      </header>
+      <div class="page-intro">
+        <h1 class="page-intro__title">Admin Overview</h1>
+        <p class="page-intro__desc">Platform-wide statistics and system health.</p>
+      </div>
       <div id="admin-error"></div>
       <div id="admin-loading"></div>
     </section>
@@ -22,13 +22,23 @@ export async function renderAdminPage(container) {
   const errDisplay = new APIErrorDisplay(container.querySelector('#admin-error'), {
     onRetry: () => renderAdminPage(container),
   });
-  const spinner = Loader.inline(container.querySelector('#admin-loading'), 'Loading system data…');
+
+  // Skeleton loading
+  container.querySelector('#admin-loading').innerHTML = `
+    <div class="admin-stat-grid" aria-hidden="true">
+      ${Array.from({length: 4}).map(() => `
+        <div class="skeleton" style="height:96px;border-radius:var(--radius-lg)"></div>
+      `).join('')}
+    </div>
+  `;
+
+  const spinner = Loader.inline(container.querySelector('#admin-error').previousElementSibling, '');
 
   try {
     await taskBrowserActions.fetchTasks();
-    spinner.remove();
+    container.querySelector('#admin-loading').remove();
   } catch (err) {
-    spinner.remove();
+    container.querySelector('#admin-loading').remove();
     errDisplay.show(err);
     return;
   }
@@ -46,74 +56,121 @@ export async function renderAdminPage(container) {
     return acc;
   }, {});
 
+  const completedCount = byStatus['completed'] || 0;
+  const totalFunded    = tasks.reduce((s, t) => s + (t.funded_sats || 0), 0);
+  const totalPaid      = tasks.filter(t => t.financial_state === 'ARCHIVED').reduce((s, t) => s + (t.funded_sats || 0), 0);
+
   const flaggedTasks = tasks.filter(t =>
     t.financial_state === 'SYSTEM_LOCKDOWN' || t.status === 'pending_verification'
   );
 
   section.innerHTML += `
-    <div class="admin-grid">
-
-      <!-- Task status breakdown -->
-      <div class="admin-card">
-        <h2 class="admin-card__title">Tasks by status</h2>
-        <dl class="admin-stat-list">
-          ${STATUS_ORDER.map(s => `
-            <div class="admin-stat-row">
-              <dt><span class="badge badge--status badge--status-${s}">${s.replace('_',' ')}</span></dt>
-              <dd class="admin-stat-num">${byStatus[s]}</dd>
-            </div>
-          `).join('')}
-        </dl>
+    <!-- Stat cards row -->
+    <div class="admin-stat-grid">
+      <div class="stat-card">
+        <div class="stat-card__header">
+          <span class="stat-card__label">Total Tasks</span>
+          <span class="stat-card__icon stat-card__icon--blue">⬛</span>
+        </div>
+        <div class="stat-card__value">${tasks.length}</div>
       </div>
+      <div class="stat-card">
+        <div class="stat-card__header">
+          <span class="stat-card__label">System TVL (Funded)</span>
+          <span class="stat-card__icon stat-card__icon--green">💰</span>
+        </div>
+        <div class="stat-card__value" style="font-family:var(--font-mono)">${totalFunded.toLocaleString()} sats</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-card__header">
+          <span class="stat-card__label">Total Paid Out</span>
+          <span class="stat-card__icon stat-card__icon--orange">₿</span>
+        </div>
+        <div class="stat-card__value" style="font-family:var(--font-mono)">${totalPaid.toLocaleString()} sats</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-card__header">
+          <span class="stat-card__label">Completed Tasks</span>
+          <span class="stat-card__icon stat-card__icon--purple">✓</span>
+        </div>
+        <div class="stat-card__value">${completedCount}</div>
+      </div>
+    </div>
 
-      <!-- Financial state breakdown -->
-      <div class="admin-card">
-        <h2 class="admin-card__title">Tasks by financial state</h2>
-        <dl class="admin-stat-list">
+    <!-- Two-column breakdowns -->
+    <div class="two-col-grid" style="margin-bottom:var(--space-8)">
+
+      <!-- Tasks by Financial State -->
+      <div class="card">
+        <div class="card__header">
+          <span class="card__title">Tasks by Financial State</span>
+        </div>
+        <div class="card__content">
           ${FIN_ORDER.map(s => `
-            <div class="admin-stat-row">
-              <dt><span class="badge badge--financial badge--financial-${s}">${s.replace('_',' ')}</span></dt>
-              <dd class="admin-stat-num">${byFinancial[s]}</dd>
+            <div class="state-entry">
+              <span class="state-entry__name">
+                <span class="badge badge--financial badge--financial-${s}">${s.replace(/_/g,' ')}</span>
+              </span>
+              <span class="state-entry__count">${byFinancial[s]}</span>
             </div>
           `).join('')}
-        </dl>
+        </div>
       </div>
 
-      <!-- Total -->
-      <div class="admin-card admin-card--highlight">
-        <h2 class="admin-card__title">Total tasks</h2>
-        <p class="admin-big-num">${tasks.length}</p>
+      <!-- Flagged Tasks -->
+      <div class="card">
+        <div class="card__header card__header--row">
+          <div class="card__header-left">
+            <span class="card__title">⚠ Flagged Tasks</span>
+            <span class="card__description">Tasks requiring admin attention</span>
+          </div>
+        </div>
+        <div class="card__content">
+          ${flaggedTasks.length === 0
+            ? `<p class="admin-clear" style="text-align:center;color:var(--color-text-muted);padding:var(--space-8)">No flagged tasks.</p>`
+            : flaggedTasks.map(t => `
+                <div class="flagged-row">
+                  <div>
+                    <div class="flagged-row__title">${esc(t.title || t.slug)}</div>
+                    <div class="flagged-row__state">${t.financial_state.replace(/_/g,' ')}</div>
+                  </div>
+                  <a href="/tasks/${esc(t.slug)}" class="flagged-row__link">View</a>
+                </div>
+              `).join('')
+          }
+        </div>
       </div>
 
-      <!-- Quick links -->
-      <div class="admin-card">
-        <h2 class="admin-card__title">Quick actions</h2>
-        <div class="admin-links">
+    </div>
+
+    <!-- Status breakdown + quick actions -->
+    <div class="two-col-grid" style="margin-bottom:var(--space-8)">
+      <div class="card">
+        <div class="card__header">
+          <span class="card__title">Tasks by Status</span>
+        </div>
+        <div class="card__content">
+          ${STATUS_ORDER.map(s => `
+            <div class="state-entry">
+              <span class="badge badge--status badge--status-${s}">${s.replace(/_/g,' ')}</span>
+              <span class="state-entry__count">${byStatus[s]}</span>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card__header">
+          <span class="card__title">Quick Actions</span>
+        </div>
+        <div class="card__content" style="display:flex;flex-direction:column;gap:var(--space-3)">
           <a href="/volunteer/tasks"  class="btn btn--ghost">All tasks</a>
           <a href="/trustee/payout"   class="btn btn--ghost">Payout review</a>
           <a href="/campaigns/new"    class="btn btn--ghost">Create campaign</a>
           <a href="/trustee/register" class="btn btn--ghost">Register trustee</a>
         </div>
       </div>
-
     </div>
-
-    <!-- Flagged tasks -->
-    ${flaggedTasks.length ? `
-      <div class="admin-flagged">
-        <h2 class="admin-flagged__title">⚠ Requires attention (${flaggedTasks.length})</h2>
-        <div class="admin-flagged__list">
-          ${flaggedTasks.map(t => `
-            <a href="/tasks/${esc(t.slug)}" class="admin-flagged__row">
-              <code class="mono">${esc(t.slug)}</code>
-              <span class="badge badge--status badge--status-${t.status}">${t.status.replace('_',' ')}</span>
-              <span class="badge badge--financial badge--financial-${t.financial_state}">${t.financial_state.replace('_',' ')}</span>
-              <time>${formatDate(t.created_at)}</time>
-            </a>
-          `).join('')}
-        </div>
-      </div>
-    ` : '<p class="admin-clear">✓ No tasks require immediate attention.</p>'}
   `;
 }
 

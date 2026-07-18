@@ -8,17 +8,19 @@ import authStore           from '../state/authStore.js';
 export async function renderCampaignsPage(container) {
   container.innerHTML = `
     <section class="campaigns-page container">
-      <header class="page-header">
-        <div class="page-header__row">
-          <div>
-            <h1>My Campaigns</h1>
-            <p class="page-header__sub">Manage your volunteer task campaigns.</p>
-          </div>
-          <a href="/campaigns/new" class="btn btn--primary">+ New campaign</a>
+      <div class="page-intro-row">
+        <div>
+          <h1 class="page-intro__title">My Campaigns</h1>
+          <p class="page-intro__desc">Manage your volunteer task campaigns.</p>
         </div>
-      </header>
+        <a href="/campaigns/new" class="btn btn--primary">+ New Campaign</a>
+      </div>
       <div id="campaigns-error"></div>
-      <div id="campaigns-loading"></div>
+      <div id="campaigns-loading">
+        <div class="task-grid" aria-hidden="true">
+          ${Array.from({length:3}).map(() => `<div class="skeleton-card"></div>`).join('')}
+        </div>
+      </div>
       <div id="campaigns-grid" class="task-grid" role="list" aria-label="Your campaigns"></div>
     </section>
   `;
@@ -46,9 +48,11 @@ export async function renderCampaignsPage(container) {
 
   if (!mine.length) {
     grid.innerHTML = `
-      <div class="empty-state">
-        <p>You have not created any campaigns yet.</p>
-        <a href="/campaigns/new" class="btn btn--primary">Create your first campaign</a>
+      <div class="empty-box" style="grid-column:1/-1">
+        <div class="empty-box__icon">📋</div>
+        <div class="empty-box__title">No campaigns yet</div>
+        <p class="empty-box__desc">You have not created any campaigns yet.</p>
+        <a href="/campaigns/new" class="btn btn--primary btn--sm">Create your first campaign</a>
       </div>
     `;
     return;

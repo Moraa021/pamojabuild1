@@ -9,10 +9,10 @@ const PAYMENT_STATUSES = ['pending', 'approved', 'signed', 'broadcast', 'complet
 export async function renderVolunteerPaymentsPage(container) {
   container.innerHTML = `
     <section class="vol-payments container">
-      <header class="page-header">
-        <h1>Payment History</h1>
-        <p class="page-header__sub">Track every payout from submission to your Lightning wallet.</p>
-      </header>
+      <div class="page-intro">
+        <h1 class="page-intro__title">Payment History</h1>
+        <p class="page-intro__desc">Track every payout from submission to your Lightning wallet.</p>
+      </div>
       <div id="payments-error"></div>
       <div id="payments-loading"></div>
     </section>

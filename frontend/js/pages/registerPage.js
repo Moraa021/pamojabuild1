@@ -7,67 +7,108 @@ import { ROLES }           from '../config/roles.js';
 
 const AUTH_REGISTER_URL = `${ENV.API_BASE_URL}/api/${ENV.API_VERSION}/auth/register`;
 
+const ROLE_OPTIONS = [
+  {
+    value: ROLES.VOLUNTEER,
+    label: 'Volunteer',
+    desc:  'Complete tasks to earn sats',
+  },
+  {
+    value: ROLES.DONOR,
+    label: 'Donor',
+    desc:  'Fund campaigns via Lightning',
+  },
+  {
+    value: ROLES.CREATOR,
+    label: 'Campaign Creator',
+    desc:  'Organize and create volunteer tasks',
+  },
+  {
+    value: ROLES.TRUSTEE,
+    label: 'Trustee',
+    desc:  'Verify work & co-sign payouts',
+  },
+];
+
 export function renderRegisterPage(container) {
+  const roleOptionsHTML = ROLE_OPTIONS.map(opt => `
+    <label class="role-option" for="role-${opt.value}">
+      <input
+        type="radio"
+        id="role-${opt.value}"
+        name="role"
+        value="${opt.value}"
+        ${opt.value === ROLES.VOLUNTEER ? 'checked' : ''}
+      />
+      <span class="role-option__text">
+        <strong>${opt.label}</strong>
+        ${opt.desc}
+      </span>
+    </label>
+  `).join('');
+
   container.innerHTML = `
-    <section class="auth-page container">
-      <div class="auth-card">
-        <div class="auth-card__logo" aria-hidden="true">⚡</div>
-        <h1 class="auth-card__title">Create account</h1>
-        <p class="auth-card__sub">Join the platform as a volunteer, donor, campaign creator, or trustee.</p>
+    <section class="auth-page">
+      <div class="auth-card" role="main">
 
-        <div id="register-error"></div>
+        <div class="auth-card__header">
+          <div class="auth-card__logo-icon" aria-hidden="true">⚡</div>
+          <h1 class="auth-card__title">Create an Account</h1>
+          <p class="auth-card__sub">Join PamojaBuild to participate in campaigns.</p>
+        </div>
 
-        <form id="register-form" novalidate aria-label="Registration form">
+        <div class="auth-card__body">
+          <div id="register-error"></div>
 
-          <div class="form-field">
-            <label for="field-display-name">Display name <span aria-hidden="true">*</span></label>
-            <input id="field-display-name" name="display_name" type="text" required
-                   autocomplete="name" placeholder="Your public name" />
-            <div class="form-field__error" role="alert" aria-live="polite"></div>
-          </div>
+          <form id="register-form" novalidate aria-label="Registration form">
 
-          <div class="form-field">
-            <label for="field-phone">Phone number <span aria-hidden="true">*</span></label>
-            <input id="field-phone" name="phone_number" type="tel" required
-                   autocomplete="tel" placeholder="+254 700 000 000" />
-            <div class="form-field__error" role="alert" aria-live="polite"></div>
-          </div>
+            <div class="form-field">
+              <label for="field-display-name">Display name <span aria-hidden="true">*</span></label>
+              <input id="field-display-name" name="display_name" type="text" required
+                     autocomplete="name" placeholder="Your public name" />
+              <div class="form-field__error" role="alert" aria-live="polite"></div>
+            </div>
 
-          <div class="form-field">
-            <label for="field-password">Password <span aria-hidden="true">*</span></label>
-            <input id="field-password" name="password" type="password" required
-                   autocomplete="new-password" placeholder="At least 8 characters" minlength="8" />
-            <div class="form-field__error" role="alert" aria-live="polite"></div>
-          </div>
+            <div class="form-field">
+              <label for="field-phone">Phone number <span aria-hidden="true">*</span></label>
+              <input id="field-phone" name="phone_number" type="tel" required
+                     autocomplete="tel" placeholder="+254 700 000 000" />
+              <div class="form-field__error" role="alert" aria-live="polite"></div>
+            </div>
 
-          <div class="form-field">
-            <label for="field-confirm-password">Confirm password <span aria-hidden="true">*</span></label>
-            <input id="field-confirm-password" name="confirm_password" type="password" required
-                   autocomplete="new-password" placeholder="Repeat your password" />
-            <div class="form-field__error" role="alert" aria-live="polite"></div>
-          </div>
+            <div class="form-field">
+              <label for="field-password">Password <span aria-hidden="true">*</span></label>
+              <input id="field-password" name="password" type="password" required
+                     autocomplete="new-password" placeholder="At least 8 characters" minlength="8" />
+              <div class="form-field__error" role="alert" aria-live="polite"></div>
+            </div>
 
-          <div class="form-field">
-            <label for="field-role">I am joining as <span aria-hidden="true">*</span></label>
-            <select id="field-role" name="role" required>
-              <option value="">Select your role</option>
-              <option value="volunteer">Volunteer — I want to do work and earn Bitcoin</option>
-              <option value="donor">Donor — I want to fund campaigns</option>
-              <option value="creator">Campaign Creator — I want to create volunteer tasks</option>
-              <option value="trustee">Trustee — I want to co-sign payouts</option>
-            </select>
-            <div class="form-field__error" role="alert" aria-live="polite"></div>
-          </div>
+            <div class="form-field">
+              <label for="field-confirm-password">Confirm password <span aria-hidden="true">*</span></label>
+              <input id="field-confirm-password" name="confirm_password" type="password" required
+                     autocomplete="new-password" placeholder="Repeat your password" />
+              <div class="form-field__error" role="alert" aria-live="polite"></div>
+            </div>
 
-          <button type="submit" class="btn btn--primary btn--full" id="register-btn">
-            <span class="btn__label">Create account</span>
-            <span class="btn__loading" hidden>Creating account…</span>
-          </button>
-        </form>
+            <div class="form-field" style="margin-bottom:var(--space-2)">
+              <label>I want to join as a… <span aria-hidden="true">*</span></label>
+              <div class="role-picker" id="role-picker" role="radiogroup" aria-label="Choose your role">
+                ${roleOptionsHTML}
+              </div>
+              <div class="form-field__error" role="alert" aria-live="polite" id="role-error"></div>
+            </div>
 
-        <p class="auth-card__footer">
-          Already have an account? <a href="/signin">Sign in</a>
-        </p>
+            <button type="submit" class="btn btn--primary btn--full" id="register-btn" style="margin-top:var(--space-4)">
+              <span class="btn__label">Create Account</span>
+              <span class="btn__loading" hidden>Creating account…</span>
+            </button>
+          </form>
+        </div>
+
+        <div class="auth-card__footer">
+          Already have an account? <a href="/signin">Sign In</a>
+        </div>
+
       </div>
     </section>
   `;
@@ -75,6 +116,17 @@ export function renderRegisterPage(container) {
   const form       = container.querySelector('#register-form');
   const submitBtn  = container.querySelector('#register-btn');
   const errDisplay = new APIErrorDisplay(container.querySelector('#register-error'));
+
+  // Highlight selected role option on change
+  form.querySelectorAll('input[name="role"]').forEach(radio => {
+    radio.addEventListener('change', () => {
+      form.querySelectorAll('.role-option').forEach(el => el.classList.remove('role-option--selected'));
+      radio.closest('.role-option')?.classList.add('role-option--selected');
+    });
+  });
+  // Set initial highlight
+  const defaultRadio = form.querySelector('input[name="role"]:checked');
+  defaultRadio?.closest('.role-option')?.classList.add('role-option--selected');
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -106,7 +158,7 @@ export function renderRegisterPage(container) {
       valid = false;
     }
     if (!role) {
-      setFieldError(form, 'role', 'Please select a role.');
+      container.querySelector('#role-error').textContent = 'Please select a role.';
       valid = false;
     }
     if (!valid) return;
@@ -126,7 +178,7 @@ export function renderRegisterPage(container) {
       }
 
       const { token, user_id } = await res.json();
-      authActions.setSession({ token, userId: user_id, role });
+      authActions.setSession({ token, userId: user_id, role, name: display_name });
 
       Toast.show({ message: 'Account created! Welcome aboard.', type: 'success' });
 

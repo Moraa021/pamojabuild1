@@ -7,13 +7,25 @@ import { formatDate, navigate } from '../utils/utils.js';
 export async function renderApplicationHistoryPage(container) {
   container.innerHTML = `
     <section class="app-history container">
-      <header class="page-header">
-        <h1>My Applications</h1>
-        <p class="page-header__sub">Track the status of every task you have applied for.</p>
-      </header>
+      <div class="page-intro">
+        <h1 class="page-intro__title">My Applications</h1>
+        <p class="page-intro__desc">Track the status of every task you have applied for.</p>
+      </div>
       <div id="app-error"></div>
-      <div id="app-loading"></div>
-      <div id="app-list"></div>
+      <div id="app-loading">
+        <div class="card" style="padding:var(--space-4)">
+          ${Array.from({length:4}).map(() => `
+            <div style="display:flex;justify-content:space-between;padding:var(--space-4) 0;border-bottom:1px solid var(--color-border)">
+              <div style="display:flex;flex-direction:column;gap:var(--space-2);flex:1">
+                <div class="skeleton skeleton--title" style="width:40%"></div>
+                <div class="skeleton skeleton--text" style="width:60%"></div>
+              </div>
+              <div class="skeleton skeleton--badge" style="align-self:center"></div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+      <div class="card card__content--flush" id="app-list"></div>
     </section>
   `;
 
@@ -36,9 +48,11 @@ export async function renderApplicationHistoryPage(container) {
 
   if (!applications.length) {
     listEl.innerHTML = `
-      <div class="empty-state">
-        <p>You have not applied for any tasks yet.</p>
-        <a href="/volunteer/tasks" class="btn btn--primary">Browse tasks</a>
+      <div class="empty-box">
+        <div class="empty-box__icon">📄</div>
+        <div class="empty-box__title">No applications yet</div>
+        <p class="empty-box__desc">You have not applied for any tasks yet. Browse open tasks to get started.</p>
+        <a href="/volunteer/tasks" class="btn btn--primary btn--sm">Browse Tasks</a>
       </div>
     `;
     return;
@@ -46,16 +60,18 @@ export async function renderApplicationHistoryPage(container) {
 
   applications.forEach(app => {
     const row = document.createElement('div');
-    row.className = 'app-row';
+    row.className = 'item-row';
     row.innerHTML = `
-      <div class="app-row__main">
-        <button class="app-row__slug btn btn--ghost btn--sm" data-slug="${esc(app.task_slug)}">
+      <div style="flex:1">
+        <button class="item-row__title app-row__slug" data-slug="${esc(app.task_slug)}">
           ${esc(app.task_slug)}
         </button>
-        <p class="app-row__message text-muted">${esc(app.message || '—')}</p>
-        <time class="app-row__date">${formatDate(app.applied_at)}</time>
+        <div class="item-row__sub">
+          <span class="item-row__meta-pill">${esc(app.message ? app.message.slice(0, 50) : '—')}</span>
+          <time>${formatDate(app.applied_at)}</time>
+        </div>
       </div>
-      <div class="app-row__badge" id="badge-${app.id}"></div>
+      <div id="badge-${app.id}"></div>
     `;
 
     row.querySelector(`#badge-${app.id}`).appendChild(new ApplicationStatusBadge(app.status).element);

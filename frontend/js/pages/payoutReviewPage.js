@@ -25,6 +25,10 @@ export async function renderPayoutReviewPage(container) {
 
   container.innerHTML = `
     <section class="payout-review container">
+      <div class="page-intro">
+        <h1 class="page-intro__title">Trustee Payout Review</h1>
+        <p class="page-intro__desc">Review completed tasks and co-sign PSBTs to release funds.</p>
+      </div>
       <div id="payout-error"></div>
       <div id="payout-loading"></div>
     </section>
@@ -47,90 +51,132 @@ export async function renderPayoutReviewPage(container) {
   }
 
   section.innerHTML = `
-    <header class="page-header">
-      <h1>Payout Review</h1>
-      <p class="page-header__sub">Campaign: <code class="mono">${esc(slug)}</code></p>
-    </header>
+    <div class="payout-layout">
 
-    <div class="payout-review__layout">
-      <div class="payout-review__manifest">
-        <div class="info-card">
-          <h2>Payout Breakdown</h2>
-          <dl class="info-card__dl">
-            <div>
-              <dt>Layer 1 (on-chain)</dt>
-              <dd class="value-sats">${formatSats(manifest.l1_amount_sats)}</dd>
-            </div>
-            <div>
-              <dt>Layer 2 (Lightning tail)</dt>
-              <dd class="value-sats">${formatSats(manifest.l2_amount_sats)}</dd>
-            </div>
-          </dl>
-        </div>
+      <!-- Left: PSBT + signing form -->
+      <div style="display:flex;flex-direction:column;gap:var(--space-6)">
 
-        <div class="info-card info-card--mono">
-          <h2>Unsigned PSBT <span class="badge badge--layer">Layer 1</span></h2>
-          <p class="info-card__hint">Copy this to your hardware wallet for signing.</p>
-          <div class="copyable-block">
-            <code id="psbt-value" class="mono copyable-block__content">${esc(manifest.unsigned_psbt_hex)}</code>
-            <button class="btn btn--ghost btn--sm" data-copy-target="psbt-value">Copy</button>
+        <div class="card">
+          <div class="card__header">
+            <span class="card__title">🔑 Partial Signed Bitcoin Transaction (PSBT)</span>
           </div>
-        </div>
-
-        <div class="info-card info-card--mono">
-          <h2>Volunteer Invoice <span class="badge badge--layer">Layer 2</span></h2>
-          <p class="info-card__hint">The BOLT11 invoice for the Lightning tail balance.</p>
-          <div class="copyable-block">
-            <code id="invoice-value" class="mono copyable-block__content">${esc(manifest.volunteer_invoice)}</code>
-            <button class="btn btn--ghost btn--sm" data-copy-target="invoice-value">Copy</button>
-          </div>
-        </div>
-      </div>
-
-      <div class="payout-review__signing">
-        <div id="sig-tracker-container"></div>
-        <div id="sig-error"></div>
-        <form id="sig-form" novalidate aria-label="Co-signature submission form">
-          <fieldset class="form-section">
-            <legend>Submit your signatures</legend>
-
-            <div class="form-field">
-              <label for="field-pubkey-hex">Your trustee public key (hex) <span aria-hidden="true">*</span></label>
-              <input id="field-pubkey-hex" name="trustee_public_key_hex" type="text"
-                     required class="mono" placeholder="Paste your public key hex" />
-              <div class="form-field__error" role="alert" aria-live="polite"></div>
-            </div>
-
-            <div class="form-field">
-              <label for="field-psbt-sig">Layer 1 PSBT signature fragment <span aria-hidden="true">*</span></label>
-              <textarea id="field-psbt-sig" name="layer1_psbt_signature_fragment" rows="3"
-                        required class="mono" placeholder="Paste the PSBT signature fragment from your hardware wallet"></textarea>
-              <div class="form-field__error" role="alert" aria-live="polite"></div>
-            </div>
-
-            <div class="form-field">
-              <label>Layer 2 WebCrypto signature</label>
-              <div class="key-gen-panel">
-                <code id="l2-sig-display" class="mono key-gen-panel__key" aria-live="polite">Not yet signed</code>
-                <button type="button" class="btn btn--ghost" id="sign-l2-btn">
-                  Sign with browser key
-                </button>
-              </div>
-              <input type="hidden" id="field-l2-sig" name="layer2_web_crypto_signature" />
-              <p class="form-field__hint">
-                Signs the volunteer invoice using the browser key pair registered during trustee setup.
-                Ensure you are on the same browser and device you used to register.
-              </p>
-            </div>
-          </fieldset>
-
-          <div class="form-actions">
-            <button type="submit" class="btn btn--primary" id="sign-submit-btn">
-              <span class="btn__label">Submit Signatures</span>
-              <span class="btn__loading" hidden>Submitting…</span>
+          <div class="card__content">
+            <div class="mono-block" id="psbt-value">${esc(manifest.unsigned_psbt_hex)}</div>
+            <button class="btn btn--ghost btn--sm" style="margin-top:var(--space-3)" data-copy-target="psbt-value">
+              Copy PSBT
             </button>
           </div>
-        </form>
+        </div>
+
+        <div class="card">
+          <div class="card__header">
+            <span class="card__title">Layer 2 Volunteer Invoice</span>
+          </div>
+          <div class="card__content">
+            <div class="mono-block" id="invoice-value">${esc(manifest.volunteer_invoice)}</div>
+            <button class="btn btn--ghost btn--sm" style="margin-top:var(--space-3)" data-copy-target="invoice-value">
+              Copy Invoice
+            </button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card__header">
+            <span class="card__title">Submit Co-Signature</span>
+          </div>
+          <div class="card__content">
+            <div id="sig-error"></div>
+            <form id="sig-form" novalidate aria-label="Co-signature submission form">
+
+              <div class="form-field">
+                <label for="field-pubkey-hex">Your Trustee Public Key (hex) <span aria-hidden="true">*</span></label>
+                <input id="field-pubkey-hex" name="trustee_public_key_hex" type="text"
+                       required class="mono" placeholder="Paste your public key hex" />
+                <div class="form-field__error" role="alert" aria-live="polite"></div>
+              </div>
+
+              <div class="form-field">
+                <label for="field-psbt-sig">Layer 1 PSBT Signature Fragment <span aria-hidden="true">*</span></label>
+                <textarea id="field-psbt-sig" name="layer1_psbt_signature_fragment" rows="3"
+                          required class="mono" placeholder="Paste the PSBT signature fragment from your hardware wallet"></textarea>
+                <div class="form-field__error" role="alert" aria-live="polite"></div>
+              </div>
+
+              <div class="form-field">
+                <label>Layer 2 WebCrypto Signature</label>
+                <div class="key-gen-panel">
+                  <code id="l2-sig-display" class="mono key-gen-panel__key" aria-live="polite">Not yet signed</code>
+                  <button type="button" class="btn btn--ghost" id="sign-l2-btn">Sign with browser key</button>
+                </div>
+                <input type="hidden" id="field-l2-sig" name="layer2_web_crypto_signature" />
+                <p class="form-field__hint">
+                  Signs the volunteer invoice using the browser key pair registered during trustee setup.
+                </p>
+              </div>
+
+              <div class="form-actions">
+                <button type="submit" class="btn btn--primary" id="sign-submit-btn">
+                  <span class="btn__label">🛡 Submit Signatures</span>
+                  <span class="btn__loading" hidden>Submitting…</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Right sidebar: summary + trustee keys -->
+      <div style="display:flex;flex-direction:column;gap:var(--space-6)">
+
+        <!-- Signature tracker slot -->
+        <div id="sig-tracker-container"></div>
+
+        <!-- Payout Summary card -->
+        <div class="card card--muted">
+          <div class="card__header">
+            <span class="card__title">Payout Summary</span>
+          </div>
+          <div class="card__content">
+            <dl class="payout-summary-dl">
+              <div>
+                <dt>Campaign</dt>
+                <dd><code class="mono" style="font-size:var(--text-xs)">${esc(slug)}</code></dd>
+              </div>
+              <div>
+                <dt>Layer 1 (on-chain)</dt>
+                <dd class="payout-amount">${formatSats(manifest.l1_amount_sats)}</dd>
+              </div>
+              <div>
+                <dt>Layer 2 (Lightning)</dt>
+                <dd class="payout-amount">${formatSats(manifest.l2_amount_sats)}</dd>
+              </div>
+            </dl>
+          </div>
+        </div>
+
+        <!-- Trustee Keys card -->
+        <div class="card">
+          <div class="card__header">
+            <span class="card__title">Trustee Keys</span>
+          </div>
+          <div class="card__content" id="trustee-keys-list">
+            ${(manifest.trustees || []).map((t, i) => `
+              <div class="trustee-key-row">
+                <div style="display:flex;align-items:center;gap:var(--space-2)">
+                  <div class="trustee-key-dot${t.signed ? ' trustee-key-dot--signed' : ''}"></div>
+                  <code class="mono" style="font-size:var(--text-xs);color:var(--color-text-muted)">
+                    ${esc((t.xpub || '').substring(0, 8))}…
+                  </code>
+                </div>
+                <span style="font-size:var(--text-xs);color:${t.signed ? 'var(--color-success)' : 'var(--color-text-muted)'}">
+                  ${t.signed ? 'Signed' : 'Waiting'}
+                </span>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+
       </div>
     </div>
   `;

@@ -8,38 +8,44 @@ const AUTH_SIGNIN_URL = `${ENV.API_BASE_URL}/api/${ENV.API_VERSION}/auth/signin`
 
 export function renderSignInPage(container) {
   container.innerHTML = `
-    <section class="auth-page container">
-      <div class="auth-card">
-        <div class="auth-card__logo" aria-hidden="true">⚡</div>
-        <h1 class="auth-card__title">Sign in</h1>
-        <p class="auth-card__sub">Welcome back. Sign in to continue.</p>
+    <section class="auth-page">
+      <div class="auth-card" role="main">
 
-        <div id="signin-error"></div>
+        <div class="auth-card__header">
+          <div class="auth-card__logo-icon" aria-hidden="true">⚡</div>
+          <h1 class="auth-card__title">Sign In</h1>
+          <p class="auth-card__sub">Enter your credentials to access your account.</p>
+        </div>
 
-        <form id="signin-form" novalidate aria-label="Sign in form">
-          <div class="form-field">
-            <label for="field-phone">Phone number <span aria-hidden="true">*</span></label>
-            <input id="field-phone" name="phone_number" type="tel" required
-                   autocomplete="tel" placeholder="+254 700 000 000" />
-            <div class="form-field__error" role="alert" aria-live="polite"></div>
-          </div>
+        <div class="auth-card__body">
+          <div id="signin-error"></div>
 
-          <div class="form-field">
-            <label for="field-password">Password <span aria-hidden="true">*</span></label>
-            <input id="field-password" name="password" type="password" required
-                   autocomplete="current-password" placeholder="••••••••" />
-            <div class="form-field__error" role="alert" aria-live="polite"></div>
-          </div>
+          <form id="signin-form" novalidate aria-label="Sign in form">
+            <div class="form-field">
+              <label for="field-phone">Phone number <span aria-hidden="true">*</span></label>
+              <input id="field-phone" name="phone_number" type="tel" required
+                     autocomplete="tel" placeholder="+254 700 000 000" />
+              <div class="form-field__error" role="alert" aria-live="polite"></div>
+            </div>
 
-          <button type="submit" class="btn btn--primary btn--full" id="signin-btn">
-            <span class="btn__label">Sign in</span>
-            <span class="btn__loading" hidden>Signing in…</span>
-          </button>
-        </form>
+            <div class="form-field">
+              <label for="field-password">Password <span aria-hidden="true">*</span></label>
+              <input id="field-password" name="password" type="password" required
+                     autocomplete="current-password" placeholder="••••••••" />
+              <div class="form-field__error" role="alert" aria-live="polite"></div>
+            </div>
 
-        <p class="auth-card__footer">
+            <button type="submit" class="btn btn--primary btn--full" id="signin-btn" style="margin-top:var(--space-2)">
+              <span class="btn__label">Sign In</span>
+              <span class="btn__loading" hidden>Signing in…</span>
+            </button>
+          </form>
+        </div>
+
+        <div class="auth-card__footer">
           Don't have an account? <a href="/register">Register</a>
-        </p>
+        </div>
+
       </div>
     </section>
   `;
@@ -81,12 +87,11 @@ export function renderSignInPage(container) {
         throw new Error(body.message || `Sign in failed (${res.status})`);
       }
 
-      const { token, user_id, role } = await res.json();
-      authActions.setSession({ token, userId: user_id, role });
+      const { token, user_id, role, display_name } = await res.json();
+      authActions.setSession({ token, userId: user_id, role, name: display_name });
 
       Toast.show({ message: 'Signed in successfully.', type: 'success' });
 
-      // Redirect based on role
       const redirectMap = {
         volunteer: '/volunteer/dashboard',
         creator:   '/campaigns',
