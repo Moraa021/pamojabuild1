@@ -6,6 +6,16 @@
   --color-border:       #1e2d45;
   --color-border-strong:#2e4060;
 
+  /* Card aliases (mirrors surface) */
+  --color-card:         #111827;
+  --color-card-border:  #1e2d45;
+  --color-muted:        #1a2235;
+  --color-muted-text:   #7a90ac;
+
+  /* Primary alias (maps to accent for compatibility) */
+  --color-primary:      #f7931a;
+  --color-primary-dim:  #b35e0d;
+
   --color-accent:       #f7931a;
   --color-accent-dim:   #b35e0d;
   --color-accent-glow:  rgba(247, 147, 26, 0.15);
