@@ -60,7 +60,7 @@ These lifecycles should coordinate, but they are not the same thing.
 
 | Area | Status today | Plain-language meaning |
 |---|---|---|
-| Registration and sign-in | Hardened foundation | Accounts are general, phone numbers are canonicalized, passwords are hashed, JWTs are algorithm-restricted and revocable, and a profile is created atomically. Refresh tokens are not implemented. |
+| Registration and sign-in | Hardened foundation | Accounts are general, phone numbers are canonicalized, passwords are hashed, and opaque server-side sessions are revocable per device and delivered in HttpOnly cookies. |
 | Task creation/list/detail | Basic implementation | Tasks can be stored and fetched. State changes are not strictly controlled. |
 | Volunteer application | Partial | A volunteer can apply. No API exists for a creator/admin to approve or reject the application. |
 | Work submission | Partial | An approved volunteer can submit evidence. Approval is currently only practical through direct DB changes/tests. |
@@ -240,8 +240,8 @@ The backend deliberately accepts only `phone_number`, `password`, and `display_n
 1. removes harmless visual separators from the phone number and requires international `+` format;
 2. hashes the password with bcrypt, a deliberately slow password-hashing algorithm;
 3. creates the general `users` account and its optional volunteer profile in one database transaction;
-4. creates a JWT valid for 24 hours;
-5. returns the token, expiry, user ID, display name, and global `is_admin` capability.
+4. creates a random 256-bit session value, stores only its SHA-256 hash, and commits it with the account;
+5. sends the original value in a 24-hour `HttpOnly`, `SameSite=Lax` cookie and returns only non-secret account display data.
 
 Relevant backend:
 
@@ -250,26 +250,30 @@ Relevant backend:
 - [auth repository](../../internal/auth/repository/postgres.go)
 - [auth middleware](../../internal/auth/delivery/http/middleware.go)
 - [general accounts migration](../../db/migrations/20260718160340_general_accounts_and_task_role_guards.up.sql)
+- [server-side sessions migration](../../db/migrations/20260718165226_create_user_sessions.up.sql)
 
-The JWT is a signed session token. Its signature prevents a browser from changing the account ID. It contains only the account ID, a session version, issuer, issue time, and expiry—not a permanent creator/volunteer/trustee role. The frontend stores it in `sessionStorage` and sends it as:
+The cookie contains an opaque value: random text with no user information inside
+it. The database stores only a hash in `user_sessions`, so a database reader
+cannot directly copy the stored value into a browser. Authentication hashes the
+presented cookie and finds one active, unexpired session and its user.
 
-```http
-Authorization: Bearer <token>
-```
+The database stores `phone_number` and `is_admin` on `users`; `is_admin` is a real system-wide capability. Creator, volunteer, and trustee status comes from the `tasks`, `task_applications`, and trustee relationship rows for one specific task.
 
-The database stores `phone_number`, `is_admin`, and `token_version`. `is_admin` is a real system-wide capability. Creator, volunteer, and trustee status comes from the `tasks`, `task_applications`, and trustee relationship rows for one specific task.
-
-Sign-out increments `token_version`. That makes every older JWT for the account fail validation. This is simple revocation; it currently signs the account out on all devices because separate per-device sessions are not stored.
+Sign-out marks only the presented `user_sessions` row revoked and expires the
+cookie. Other devices remain signed in. The backend never returns the session
+value in JSON, so normal frontend JavaScript cannot read it.
 
 ### Remaining mismatches and risks
 
 - The frontend must stop sending or navigating by a registration `role`.
-- All application routes except registration/sign-in require a valid token, including task browsing and donating.
-- `JWT_SECRET` is now required and must be at least 32 characters, but deployment still needs secret storage and rotation procedures.
+- All application routes except registration/sign-in require a valid session, including task browsing and donating.
+- There is no `GET /auth/me` endpoint yet, so the frontend cannot restore account display state after a page refresh without another request design change.
+- Cookie authentication requires exact credentialed CORS origins and CSRF controls. The backend now rejects unlisted origins and browser cross-site mutations; deployment must configure `CORS_ALLOWED_ORIGINS`.
+- Production requires HTTPS because session cookies are `Secure` by default. Local HTTP development must explicitly set `SESSION_COOKIE_SECURE=false`.
 - The ledger HMAC secret still has an insecure fallback; ledger hardening remains implementation step 8.
 - Trustee-only payout routes now check the authenticated account against the task's trustee rows. The incomplete trustee-registration route still allows self-claiming an empty slot; nomination and acceptance are intentionally deferred to trustee onboarding in step 5.
 - Endpoint-by-endpoint creator ownership rules will expand as the missing creator management routes are built.
-- Refresh tokens and separate per-device sessions are not implemented.
+- Session cleanup and a “sign out all devices” operation are not implemented.
 - Public task browsing and donating still need an explicit product/API decision.
 
 ## Flow 1: Creating a campaign/task
@@ -299,7 +303,7 @@ Endpoint: `POST /api/v1/tasks`
 
 ### Backend and database
 
-1. Auth middleware validates the JWT and stores the signed-in account ID in the request context.
+1. Auth middleware validates the server-side cookie session and stores the signed-in account ID in the request context.
 2. [task handler](../../internal/task/delivery/http/handler.go) binds the JSON and uses that authenticated ID as `creator_id`; JSON cannot choose a different owner.
 3. [task service](../../internal/task/service/task_service.go) turns the title into a URL slug, sets `status = open`, and sets `financial_state = ACTIVE`.
 4. [task repository](../../internal/task/repository/postgres.go) inserts a row into `tasks`.
@@ -310,7 +314,7 @@ Important `tasks` columns:
 
 | API/Go field | DB column | Use |
 |---|---|---|
-| authenticated account ID | `creator_id` | Owner of the campaign; derived from the verified JWT, never request JSON. |
+| authenticated account ID | `creator_id` | Owner of the campaign; derived from the verified session, never request JSON. |
 | `title` | `title` | Human-readable task title. |
 | generated `slug` | `slug` | Stable URL/business identifier used by most related tables. |
 | `status` | `status` | Volunteer/work lifecycle. Starts as `open`. |
@@ -355,7 +359,7 @@ The repository reads `tasks`; related donations, applications, trustees, and led
 - payout readiness;
 - donation history.
 
-All task reads are behind JWT authentication even though the UI labels some pages public/guest-facing.
+All task reads are behind session authentication even though the UI labels some pages public/guest-facing.
 
 ## Flow 3: Donating with Lightning
 
@@ -456,7 +460,7 @@ The frontend sends:
 
 Endpoint: `POST /api/v1/tasks/:slug/apply`
 
-The handler derives `volunteer_id` from the JWT. The request contains only the application message. A creator can therefore apply to their own task; they do not receive payment merely by being the creator, but must have an explicit volunteer relationship.
+The handler derives `volunteer_id` from the authenticated session. The request contains only the application message. A creator can therefore apply to their own task; they do not receive payment merely by being the creator, but must have an explicit volunteer relationship.
 
 If accepted, the backend:
 
@@ -510,7 +514,7 @@ Endpoint: `POST /api/v1/tasks/:slug/submissions`
 
 Backend steps:
 
-1. derive `volunteer_id` from JWT;
+1. derive `volunteer_id` from the authenticated session;
 2. load that user's application for the task;
 3. require application status `approved`;
 4. insert `task_submissions` with `status = submitted`;
@@ -950,7 +954,8 @@ Failures need explicit resumable states. If L1 broadcasts but L2 fails, retry on
 
 | Table | Purpose today | Key gaps |
 |---|---|---|
-| `users` | General login identity, password hash, display name, global admin flag, session version | Refresh/per-device sessions and secret rotation are not implemented. |
+| `users` | General login identity, password hash, display name, and global admin flag | Formal admin promotion/removal workflow is not implemented. |
+| `user_sessions` | SHA-256 hashes of active/revoked per-device login sessions and their expiries | Cleanup, device labels, “sign out all,” and session-management UI are not implemented. |
 | `tasks` | Campaign details plus work and financial current states | No state history/version; loose validation; no payout link. |
 | `volunteer_profiles` | Bio, skills, payout addresses, reputation totals | Auto-created with the account; partial updates overwrite unrelated values. |
 | `task_applications` | Volunteer requests to join tasks | Unique per task/account and conflict-guarded against trustees; no approval API; capacity rules missing. |
@@ -978,7 +983,9 @@ Tables still needed or needing redesign for later phases likely include:
 ### Present foundations
 
 - bcrypt password hashing;
-- signed 24-hour JWTs;
+- random, hashed, revocable 24-hour server-side sessions;
+- `HttpOnly`, `Secure`-by-default, `SameSite=Lax` cookies;
+- exact-origin credentialed CORS and browser cross-site mutation rejection;
 - authenticated API group;
 - request validation tags and positive donation amounts;
 - a global rate-limiter middleware hook exists, but its current implementation is a no-op and provides no real rate limiting;
@@ -1003,7 +1010,7 @@ Tables still needed or needing redesign for later phases likely include:
 - reliable audit logs and independent checkpoints;
 - payout idempotency and partial-failure recovery;
 - address/invoice validation against Bitcoin network and exact amount;
-- CORS restrictions (current API allows `*`);
+- deployment validation for allowed frontend origins and HTTPS;
 - least-privilege LND macaroon and DB accounts;
 - encrypted/sensitive xpub handling policy;
 - monitoring, backups, reconciliation, incident lockdown, and key recovery;
@@ -1014,8 +1021,8 @@ Tables still needed or needing redesign for later phases likely include:
 ### Priority 0: make the current API/task flow coherent
 
 1. Use explicit response DTOs so backend JSON matches frontend snake-case fields.
-2. Fix registration role state, DB phone naming, and profile creation.
-3. Derive all actor IDs from JWT and add role/ownership authorization.
+2. Complete frontend integration with general accounts and cookie sessions.
+3. Add the authenticated account (`GET /auth/me`) contract and finish endpoint ownership policies.
 4. Fix the application request contract and implement creator application review.
 5. Define and enforce the work lifecycle; register only the intended transition routes.
 6. Align frontend submission/history/complete calls with real backend endpoints.
