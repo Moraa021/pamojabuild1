@@ -30,6 +30,11 @@ func NewTrusteeHandler(service trustee.Service) *TrusteeHandler {
 // @Router       /api/v1/tasks/{slug}/trustees [post]
 func (h *TrusteeHandler) RegisterTrusteeKeys(c *gin.Context) {
 	taskSlug := c.Param("slug")
+	userID := c.GetInt64("user_id")
+	if userID <= 0 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "authenticated account required"})
+		return
+	}
 
 	var req RegisterTrusteeKeysRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -38,7 +43,10 @@ func (h *TrusteeHandler) RegisterTrusteeKeys(c *gin.Context) {
 	}
 
 	key := &trustee.TrusteeKey{
-		UserID:             req.UserID,
+		// Trustee onboarding will later require a creator nomination and an
+		// acceptance. Until then, never let a caller register keys for someone
+		// else's account by supplying a user_id in JSON.
+		UserID:             userID,
 		TrusteeIndex:       req.TrusteeIndex,
 		Xpub:               req.Xpub,
 		WebCryptoPubkeyHex: req.WebCryptoPubkeyHex,

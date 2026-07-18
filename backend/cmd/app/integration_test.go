@@ -33,7 +33,7 @@ func newTestRouter(t *testing.T) (*gin.Engine, *sql.DB) {
 
 	cfg := &config.Config{
 		ServerPort:   "0",
-		JWTSecret:    "integration-secret",
+		JWTSecret:    "integration-secret-at-least-32-bytes",
 		ServerSecret: "ledger-test-secret",
 	}
 	database := testsupport.NewPostgresDatabase(t)
@@ -90,7 +90,7 @@ func TestFullFlow(t *testing.T) {
 		t.Fatal("expected signin token")
 	}
 
-	taskBody := fmt.Sprintf(`{"creator_id":%d,"title":"Integration Task","description":"Complete a full flow test","category":"testing","region":"earth","goal_sats":1000,"max_volunteers":1,"volunteer_mode":"open"}`, signInResp.UserID)
+	taskBody := `{"title":"Integration Task","description":"Complete a full flow test","category":"testing","region":"earth","goal_sats":1000,"max_volunteers":1,"volunteer_mode":"open"}`
 	resp = doJSONRequest(t, router, http.MethodPost, "/api/v1/tasks", token, taskBody)
 	if resp.Code != http.StatusCreated {
 		t.Fatalf("expected 201 from create task, got %d: %s", resp.Code, resp.Body.String())
@@ -104,7 +104,36 @@ func TestFullFlow(t *testing.T) {
 		t.Fatal("expected task slug")
 	}
 
-	applyBody := fmt.Sprintf(`{"volunteer_id":%d,"message":"I can help"}`, signInResp.UserID)
+	var storedCreatorID int64
+	if err := db.QueryRow(`SELECT creator_id FROM tasks WHERE slug = $1`, taskResp.Slug).Scan(&storedCreatorID); err != nil {
+		t.Fatalf("read stored task creator: %v", err)
+	}
+	if storedCreatorID != signInResp.UserID {
+		t.Fatalf("expected authenticated account %d to own task, got %d", signInResp.UserID, storedCreatorID)
+	}
+
+	trusteeRegisterBody := `{"phone_number":"+15550000002","password":"password123","display_name":"Test Trustee"}`
+	resp = doJSONRequest(t, router, http.MethodPost, "/api/v1/auth/register", "", trusteeRegisterBody)
+	if resp.Code != http.StatusCreated {
+		t.Fatalf("expected 201 from trustee registration, got %d: %s", resp.Code, resp.Body.String())
+	}
+	var trusteeAuth authResponse
+	if err := json.Unmarshal(resp.Body.Bytes(), &trusteeAuth); err != nil {
+		t.Fatalf("decode trustee auth response: %v", err)
+	}
+
+	trusteeKeysBody := `{"trustee_index":0,"xpub":"integration-xpub","web_crypto_pubkey_hex":"integration-public-key"}`
+	resp = doJSONRequest(t, router, http.MethodPost, fmt.Sprintf("/api/v1/tasks/%s/trustees", taskResp.Slug), trusteeAuth.Token, trusteeKeysBody)
+	if resp.Code != http.StatusCreated {
+		t.Fatalf("expected 201 from trustee key registration, got %d: %s", resp.Code, resp.Body.String())
+	}
+
+	resp = doJSONRequest(t, router, http.MethodPost, fmt.Sprintf("/api/v1/tasks/%s/apply", taskResp.Slug), trusteeAuth.Token, `{"message":"conflicting application"}`)
+	if resp.Code != http.StatusConflict {
+		t.Fatalf("expected trustee/volunteer conflict, got %d: %s", resp.Code, resp.Body.String())
+	}
+
+	applyBody := `{"message":"I can help"}`
 	resp = doJSONRequest(t, router, http.MethodPost, fmt.Sprintf("/api/v1/tasks/%s/apply", taskResp.Slug), token, applyBody)
 	if resp.Code != http.StatusCreated {
 		t.Fatalf("expected 201 from apply, got %d: %s", resp.Code, resp.Body.String())

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"crypto/x509"
+	"database/sql"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -19,26 +20,11 @@ var (
 
 type TrusteeService struct {
 	keyRepo  trustee.KeyRepository
-	userRepo trustee.UserRepository
 	eventBus *events.EventBus
 }
 
-func NewTrusteeService(keyRepo trustee.KeyRepository, userRepo trustee.UserRepository, eventBus *events.EventBus) *TrusteeService {
-	return &TrusteeService{keyRepo: keyRepo, userRepo: userRepo, eventBus: eventBus}
-}
-
-func (s *TrusteeService) RegisterUser(ctx context.Context, email, password, displayName string) (*trustee.User, error) {
-	user := &trustee.User{
-		Email:        email,
-		PasswordHash: password,
-		DisplayName:  displayName,
-	}
-
-	if err := s.userRepo.Create(ctx, user); err != nil {
-		return nil, err
-	}
-
-	return user, nil
+func NewTrusteeService(keyRepo trustee.KeyRepository, eventBus *events.EventBus) *TrusteeService {
+	return &TrusteeService{keyRepo: keyRepo, eventBus: eventBus}
 }
 
 func (s *TrusteeService) AssignTrusteeSlot(ctx context.Context, slug string, key *trustee.TrusteeKey) error {
@@ -46,14 +32,20 @@ func (s *TrusteeService) AssignTrusteeSlot(ctx context.Context, slug string, key
 		return ErrInvalidTrusteeIndex
 	}
 
-	existing, _ := s.keyRepo.GetSpecificTrustee(ctx, slug, key.TrusteeIndex)
-	if existing != nil && existing.UserID != 0 {
+	existing, err := s.keyRepo.GetSpecificTrustee(ctx, slug, key.TrusteeIndex)
+	if err == nil && existing != nil {
 		return ErrSlotAlreadyTaken
+	}
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("check trustee slot: %w", err)
 	}
 
 	key.TaskSlug = slug
 	if err := s.keyRepo.SaveKeys(ctx, key); err != nil {
-		return err
+		// The database primary key is the final concurrency guard. The insert
+		// never upserts because key registration must not silently replace a
+		// trustee who won a race for the same slot.
+		return fmt.Errorf("save trustee slot: %w", err)
 	}
 
 	if s.eventBus != nil {

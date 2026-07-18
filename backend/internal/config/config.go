@@ -23,8 +23,10 @@ func Load() *Config {
 		ServerPort: getEnv("SERVER_PORT", "8080"),
 		// DATABASE_URL intentionally has no fallback. Silently starting with a
 		// local database can split financial state between environments.
-		DatabaseURL:    getEnv("DATABASE_URL", ""),
-		JWTSecret:      getEnv("JWT_SECRET", "your-secret-key"),
+		DatabaseURL: getEnv("DATABASE_URL", ""),
+		// Authentication must never silently start with a shared development
+		// secret. Router construction fails unless deployment provides one.
+		JWTSecret:      getEnv("JWT_SECRET", ""),
 		LNDClientMode:  getEnv("LND_CLIENT_MODE", "grpc"),
 		LNDHost:        getEnv("LND_HOST", "localhost:10009"),
 		LNDRESTHost:    getEnv("LND_REST_HOST", "https://localhost:8080"),

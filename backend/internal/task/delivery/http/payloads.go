@@ -3,7 +3,6 @@ package http
 import "time"
 
 type CreateTaskRequest struct {
-	CreatorID      int64  `json:"creator_id" binding:"required"`
 	Title          string `json:"title" binding:"required"`
 	Description    string `json:"description" binding:"required"`
 	Category       string `json:"category" binding:"required"`
@@ -23,8 +22,8 @@ type TaskResponse struct {
 	Category       string    `json:"category"`
 	Region         string    `json:"region"`
 	LocationDetail string    `json:"location_detail,omitempty"`
-	Status         string    `json:"status"`           // "open", "in_progress", "pending_verification", "completed"
-	FinancialState string    `json:"financial_state"`  // "ACTIVE", "LIQUIDATING", "READY_FOR_PAYOUT", "SYSTEM_LOCKDOWN", "ARCHIVED"
+	Status         string    `json:"status"`          // "open", "in_progress", "pending_verification", "completed"
+	FinancialState string    `json:"financial_state"` // "ACTIVE", "LIQUIDATING", "READY_FOR_PAYOUT", "SYSTEM_LOCKDOWN", "ARCHIVED"
 	GoalSats       int64     `json:"goal_sats,omitempty"`
 	MaxVolunteers  int64     `json:"max_volunteers"`
 	VolunteerMode  string    `json:"volunteer_mode"`

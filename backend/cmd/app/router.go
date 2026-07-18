@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"pamojabuild1/backend/internal/authorization"
 	"pamojabuild1/backend/internal/config"
 	"pamojabuild1/backend/internal/events"
 	"pamojabuild1/backend/internal/lightning"
@@ -96,7 +97,10 @@ func newRouter(db *sql.DB, cfg *config.Config, lightningNode lightning.NodeClien
 	eventBus := events.NewEventBus()
 
 	authRepo := authRepo.NewAuthRepository(db)
-	authSvc := authService.NewAuthService(authRepo, cfg.JWTSecret)
+	authSvc, err := authService.NewAuthService(authRepo, cfg.JWTSecret)
+	if err != nil {
+		panic(fmt.Sprintf("failed to configure authentication: %v", err))
+	}
 	authH := authHandler.NewAuthHandler(authSvc)
 
 	profileRepo := volunteerRepo.NewProfileRepository(db)
@@ -115,8 +119,9 @@ func newRouter(db *sql.DB, cfg *config.Config, lightningNode lightning.NodeClien
 	taskH := taskHandler.NewTaskHandler(taskSvc)
 
 	trusteeRepo := trusteeRepo.NewTrusteeRepository(db)
-	trusteeSvc := trusteeService.NewTrusteeService(trusteeRepo, trusteeRepo, eventBus)
+	trusteeSvc := trusteeService.NewTrusteeService(trusteeRepo, eventBus)
 	trusteeH := trusteeHandler.NewTrusteeHandler(trusteeSvc)
+	taskAuthorization := authorization.NewRepository(db)
 
 	lightningRepo := lightningRepo.NewLightningRepository(db)
 	lightningSvc := lightningService.NewLightningService(lightningRepo, lightningNode, cfg, eventBus)
@@ -237,6 +242,7 @@ func newRouter(db *sql.DB, cfg *config.Config, lightningNode lightning.NodeClien
 			}
 
 			trustees := protected.Group("/trustees")
+			trustees.Use(authorization.RequireTaskTrustee(taskAuthorization))
 			{
 				trustees.GET("/payouts/:slug", escrowH.GetPayoutReviewManifest)
 				trustees.POST("/payouts/:slug/sign", escrowH.SubmitCoSignatures)

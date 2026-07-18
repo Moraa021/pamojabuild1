@@ -18,8 +18,8 @@ func AuthMiddleware(authService auth.Service) gin.HandlerFunc {
 			return
 		}
 
-		tokenParts := strings.Split(authHeader, " ")
-		if len(tokenParts) != 2 || tokenParts[0] != "Bearer" {
+		tokenParts := strings.Fields(authHeader)
+		if len(tokenParts) != 2 || !strings.EqualFold(tokenParts[0], "Bearer") {
 			c.JSON(http.StatusUnauthorized, ErrorResponse{Error: "invalid_token", Message: "Invalid token format"})
 			c.Abort()
 			return

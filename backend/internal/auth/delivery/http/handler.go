@@ -1,11 +1,14 @@
 package http
 
 import (
+	"errors"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
 	"pamojabuild1/backend/internal/auth"
+	authService "pamojabuild1/backend/internal/auth/service"
 )
 
 type AuthHandler struct {
@@ -21,7 +24,7 @@ func NewAuthHandler(service auth.Service) *AuthHandler {
 // @Description  Create a new user account using phone number and password, and return a JWT token.
 // @Tags         Auth
 // @Accept       json
-// @Produce      json	
+// @Produce      json
 // @Param        body  body      RegisterRequest  true  "Registration payload"
 // @Success      201   {object}  AuthResponse
 // @Failure      400   {object}  ErrorResponse
@@ -36,15 +39,20 @@ func (h *AuthHandler) Register(c *gin.Context) {
 
 	user, token, err := h.service.Register(c.Request.Context(), req.PhoneNumber, req.Password, req.DisplayName)
 	if err != nil {
-		c.JSON(http.StatusConflict, ErrorResponse{Error: "registration_failed", Message: err.Error()})
+		status := http.StatusBadRequest
+		if errors.Is(err, authService.ErrUserExists) {
+			status = http.StatusConflict
+		}
+		c.JSON(status, ErrorResponse{Error: "registration_failed", Message: err.Error()})
 		return
 	}
 
 	c.JSON(http.StatusCreated, AuthResponse{
 		Token:       token,
 		UserID:      user.ID,
-		Role:        user.Role,
+		IsAdmin:     user.IsAdmin,
 		DisplayName: user.DisplayName,
+		ExpiresAt:   time.Now().Add(24 * time.Hour),
 	})
 }
 
@@ -75,8 +83,9 @@ func (h *AuthHandler) SignIn(c *gin.Context) {
 	c.JSON(http.StatusOK, AuthResponse{
 		Token:       token,
 		UserID:      user.ID,
-		Role:        user.Role,
+		IsAdmin:     user.IsAdmin,
 		DisplayName: user.DisplayName,
+		ExpiresAt:   time.Now().Add(24 * time.Hour),
 	})
 }
 
@@ -85,8 +94,19 @@ func (h *AuthHandler) SignIn(c *gin.Context) {
 // @Description  Invalidate the current session token or clear authentication state.
 // @Tags         Auth
 // @Produce      json
-// @Success      200  {object}  map[string]string
+// @Success      204
+// @Failure      500  {object}  ErrorResponse
+// @Security     BearerAuth
 // @Router       /api/v1/auth/signout [post]
 func (h *AuthHandler) SignOut(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"message": "Signed out successfully"})
+	userID := c.GetInt64("user_id")
+	if userID <= 0 {
+		c.JSON(http.StatusUnauthorized, ErrorResponse{Error: "auth_required", Message: "Authenticated account required"})
+		return
+	}
+	if err := h.service.SignOut(c.Request.Context(), userID); err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "signout_failed", Message: "Could not revoke session"})
+		return
+	}
+	c.Status(http.StatusNoContent)
 }
