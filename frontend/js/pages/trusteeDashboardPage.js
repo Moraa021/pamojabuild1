@@ -40,71 +40,85 @@ export async function renderTrusteeDashboardPage(container) {
   }
 
   section.innerHTML = `
-    <header class="page-header">
-      <h1>Trustee Registration</h1>
-      <p class="page-header__sub">Campaign: <strong>${esc(task.title)}</strong></p>
-    </header>
+    <div class="page-intro">
+      <h1 class="page-intro__title">Trustee Registration</h1>
+      <p class="page-intro__desc">Register your keys for campaign: <strong>${esc(task.title)}</strong></p>
+    </div>
 
-    <div class="trustee-dashboard__layout">
-      <div class="trustee-dashboard__info">
-        <div class="info-card">
-          <h2>How trustee keys work</h2>
-          <p>As a trustee, you provide two keys:</p>
+    <div class="two-col-grid">
+
+      <!-- Info card -->
+      <div class="card card--muted">
+        <div class="card__header">
+          <span class="card__title">🔑 How Trustee Keys Work</span>
+        </div>
+        <div class="card__content">
+          <p style="font-size:var(--text-sm);color:var(--color-text-muted);margin-bottom:var(--space-4)">
+            As a trustee, you provide two keys:
+          </p>
           <ol class="trustee-info__list">
             <li><strong>xpub</strong> — Your BIP32 HD master public key. Used to derive the 3-of-5 multi-sig on-chain address for Layer 1 payouts.</li>
             <li><strong>WebCrypto key</strong> — A browser-generated ECDSA P-256 key. Used to authorise Layer 2 (Lightning) tail payouts without hardware wallets.</li>
           </ol>
-          <p class="notice">Your private keys never leave your browser or device.</p>
+          <div class="notice">⚠ Your private keys never leave your browser or device.</div>
         </div>
       </div>
 
-      <div class="trustee-dashboard__form-side">
-        <div id="reg-error"></div>
-        <form id="trustee-reg-form" novalidate aria-label="Trustee key registration form">
+      <!-- Registration form card -->
+      <div class="card">
+        <div class="card__header">
+          <span class="card__title">Register Keys</span>
+          <span class="card__description">Your keys will be linked to this campaign's multi-sig.</span>
+        </div>
+        <div class="card__content">
+          <div id="reg-error"></div>
+          <form id="trustee-reg-form" novalidate aria-label="Trustee key registration form">
 
-          <div class="form-field">
-            <label for="field-trustee-index">Your trustee slot <span aria-hidden="true">*</span></label>
-            <select id="field-trustee-index" name="trustee_index" required>
-              <option value="">Select your assigned slot</option>
-              <option value="0">Slot 0</option>
-              <option value="1">Slot 1</option>
-              <option value="2">Slot 2</option>
-              <option value="3">Slot 3</option>
-              <option value="4">Slot 4</option>
-            </select>
-            <div class="form-field__error" role="alert" aria-live="polite"></div>
-          </div>
+            <div class="form-field">
+              <label for="field-trustee-index">Your trustee slot <span aria-hidden="true">*</span></label>
+              <select id="field-trustee-index" name="trustee_index" required>
+                <option value="">Select your assigned slot</option>
+                <option value="0">Slot 0</option>
+                <option value="1">Slot 1</option>
+                <option value="2">Slot 2</option>
+                <option value="3">Slot 3</option>
+                <option value="4">Slot 4</option>
+              </select>
+              <div class="form-field__error" role="alert" aria-live="polite"></div>
+            </div>
 
-          <div class="form-field">
-            <label for="field-xpub">xpub (BIP32 HD Master Public Key) <span aria-hidden="true">*</span></label>
-            <textarea id="field-xpub" name="xpub" required rows="3"
-                      placeholder="xpub6CUGRUonZSQ4TWtTMmzXdrXDtypWKiKrhko4egpiMZbpiaQL2jkwSB1icqYh2cfDfVxdx4df189oLKnC5fSwqPfgyP3hooxujYzAu3fDVmz"
-                      class="mono"></textarea>
-            <div class="form-field__error" role="alert" aria-live="polite"></div>
-          </div>
+            <div class="form-field">
+              <label for="field-xpub">xpub (BIP32 HD Master Public Key) <span aria-hidden="true">*</span></label>
+              <textarea id="field-xpub" name="xpub" required rows="3"
+                        placeholder="xpub6CUGRUonZSQ4TWtT…"
+                        class="mono"></textarea>
+              <div class="form-field__error" role="alert" aria-live="polite"></div>
+            </div>
 
-          <div class="form-field">
-            <label>WebCrypto public key</label>
-            <div class="key-gen-panel">
-              <code id="pubkey-display" class="mono key-gen-panel__key" aria-live="polite">
-                Not yet generated
-              </code>
-              <button type="button" class="btn btn--ghost" id="gen-key-btn">
-                Generate browser key pair
+            <div class="form-field">
+              <label>WebCrypto Public Key</label>
+              <div class="key-gen-panel">
+                <code id="pubkey-display" class="mono key-gen-panel__key" aria-live="polite">
+                  Not yet generated
+                </code>
+                <button type="button" class="btn btn--ghost" id="gen-key-btn">
+                  Generate browser key pair
+                </button>
+              </div>
+              <input type="hidden" id="field-pubkey-hex" name="web_crypto_pubkey_hex" />
+              <p class="form-field__hint">Only the public key is sent to the server.</p>
+            </div>
+
+            <div class="form-actions">
+              <button type="submit" class="btn btn--primary" id="reg-submit-btn" disabled>
+                <span class="btn__label">Register Keys</span>
+                <span class="btn__loading" hidden>Registering…</span>
               </button>
             </div>
-            <input type="hidden" id="field-pubkey-hex" name="web_crypto_pubkey_hex" />
-            <p class="form-field__hint">Click the button to generate a key pair in your browser. Only the public key is sent to the server.</p>
-          </div>
-
-          <div class="form-actions">
-            <button type="submit" class="btn btn--primary" id="reg-submit-btn" disabled>
-              <span class="btn__label">Register Keys</span>
-              <span class="btn__loading" hidden>Registering…</span>
-            </button>
-          </div>
-        </form>
+          </form>
+        </div>
       </div>
+
     </div>
   `;
 
