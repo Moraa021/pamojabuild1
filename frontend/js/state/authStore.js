@@ -17,6 +17,8 @@ const persisted = loadPersistedSession();
 const initialState = {
   token:   persisted?.token   || null,
   userId:  persisted?.userId  || null,
+  role:    persisted?.role    || null,
+  name:    persisted?.name    || null,
   loading: false,
   error:   null,
 };
@@ -27,15 +29,15 @@ const authStore = new Store(initialState);
 setTokenAccessor(() => authStore.state.token);
 
 export const authActions = {
-  setSession({ token, userId }) {
-    const session = { token, userId };
+  setSession({ token, userId, role, name }) {
+    const session = { token, userId, role, name };
     sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
-    authStore.setState({ token, userId, error: null });
+    authStore.setState({ token, userId, role, name, error: null });
   },
 
   clearSession() {
     sessionStorage.removeItem(SESSION_KEY);
-    authStore.setState({ token: null, userId: null, error: null });
+    authStore.setState({ token: null, userId: null, role: null, name: null, error: null });
   },
 };
 
