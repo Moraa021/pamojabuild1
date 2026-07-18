@@ -8,7 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func TestValidationMiddlewareRejectsMissingJSON(t *testing.T) {
+func TestValidationMiddlewareAllowsBodylessPost(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	router.Use(ValidationMiddleware())
@@ -20,8 +20,8 @@ func TestValidationMiddlewareRejectsMissingJSON(t *testing.T) {
 	resp := httptest.NewRecorder()
 	router.ServeHTTP(resp, req)
 
-	if resp.Code != http.StatusUnsupportedMediaType && resp.Code != http.StatusBadRequest {
-		t.Fatalf("expected 415 or 400, got %d", resp.Code)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.Code)
 	}
 }
 

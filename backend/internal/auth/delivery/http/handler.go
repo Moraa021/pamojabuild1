@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"pamojabuild1/backend/internal/apihttp"
 	"pamojabuild1/backend/internal/auth"
 	authService "pamojabuild1/backend/internal/auth/service"
 )
@@ -33,23 +34,28 @@ func NewAuthHandler(service auth.Service, cookieName string, cookieSecure bool) 
 // @Produce      json
 // @Param        body  body      RegisterRequest  true  "Registration payload"
 // @Success      201   {object}  AuthResponse
-// @Failure      400   {object}  ErrorResponse
-// @Failure      409   {object}  ErrorResponse
+// @Failure      400   {object}  apihttp.ErrorResponse
+// @Failure      409   {object}  apihttp.ErrorResponse
+// @Failure      500   {object}  apihttp.ErrorResponse
 // @Router       /api/v1/auth/register [post]
 func (h *AuthHandler) Register(c *gin.Context) {
 	var req RegisterRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "validation_error", Message: err.Error()})
+	if !apihttp.BindJSON(c, &req) {
 		return
 	}
 
 	session, err := h.service.Register(c.Request.Context(), req.PhoneNumber, req.Password, req.DisplayName)
 	if err != nil {
-		status := http.StatusBadRequest
-		if errors.Is(err, authService.ErrUserExists) {
-			status = http.StatusConflict
+		switch {
+		case errors.Is(err, authService.ErrUserExists):
+			apihttp.WriteError(c, http.StatusConflict, apihttp.CodeConflict, "an account with this phone number already exists")
+		case errors.Is(err, authService.ErrInvalidPhone),
+			errors.Is(err, authService.ErrWeakPassword),
+			errors.Is(err, authService.ErrInvalidDisplayName):
+			apihttp.WriteError(c, http.StatusBadRequest, apihttp.CodeValidation, err.Error())
+		default:
+			apihttp.WriteError(c, http.StatusInternalServerError, apihttp.CodeInternal, "could not create account")
 		}
-		c.JSON(status, ErrorResponse{Error: "registration_failed", Message: err.Error()})
 		return
 	}
 
@@ -70,19 +76,23 @@ func (h *AuthHandler) Register(c *gin.Context) {
 // @Produce      json
 // @Param        body  body      SignInRequest  true  "Sign in payload"
 // @Success      200   {object}  AuthResponse
-// @Failure      400   {object}  ErrorResponse
-// @Failure      401   {object}  ErrorResponse
+// @Failure      400   {object}  apihttp.ErrorResponse
+// @Failure      401   {object}  apihttp.ErrorResponse
+// @Failure      500   {object}  apihttp.ErrorResponse
 // @Router       /api/v1/auth/signin [post]
 func (h *AuthHandler) SignIn(c *gin.Context) {
 	var req SignInRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "validation_error", Message: err.Error()})
+	if !apihttp.BindJSON(c, &req) {
 		return
 	}
 
 	session, err := h.service.SignIn(c.Request.Context(), req.PhoneNumber, req.Password)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, ErrorResponse{Error: "auth_failed", Message: "Invalid credentials"})
+		if errors.Is(err, authService.ErrInvalidCredentials) {
+			apihttp.WriteError(c, http.StatusUnauthorized, apihttp.CodeUnauthenticated, "invalid phone number or password")
+		} else {
+			apihttp.WriteError(c, http.StatusInternalServerError, apihttp.CodeInternal, "could not create session")
+		}
 		return
 	}
 
@@ -95,19 +105,44 @@ func (h *AuthHandler) SignIn(c *gin.Context) {
 	})
 }
 
+// Me godoc
+// @Summary      Get the current account
+// @Description  Restore non-secret account display state from the authenticated HttpOnly cookie session.
+// @Tags         Auth
+// @Produce      json
+// @Success      200  {object}  CurrentAccountResponse
+// @Failure      401  {object}  apihttp.ErrorResponse
+// @Security     CookieAuth
+// @Router       /api/v1/auth/me [get]
+func (h *AuthHandler) Me(c *gin.Context) {
+	userValue, exists := c.Get("user")
+	user, ok := userValue.(*auth.User)
+	if !exists || !ok || user == nil {
+		apihttp.WriteError(c, http.StatusUnauthorized, apihttp.CodeUnauthenticated, "valid session cookie required")
+		return
+	}
+
+	c.JSON(http.StatusOK, CurrentAccountResponse{
+		UserID:      user.ID,
+		IsAdmin:     user.IsAdmin,
+		DisplayName: user.DisplayName,
+	})
+}
+
 // SignOut godoc
 // @Summary      Sign out the current user
 // @Description  Revoke the current server-side session and clear its cookie.
 // @Tags         Auth
 // @Produce      json
 // @Success      204
-// @Failure      500  {object}  ErrorResponse
+// @Failure      401  {object}  apihttp.ErrorResponse
+// @Failure      500  {object}  apihttp.ErrorResponse
 // @Security     CookieAuth
 // @Router       /api/v1/auth/signout [post]
 func (h *AuthHandler) SignOut(c *gin.Context) {
 	token := c.GetString("session_token")
 	if err := h.service.SignOut(c.Request.Context(), token); err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "signout_failed", Message: "Could not revoke session"})
+		apihttp.WriteError(c, http.StatusInternalServerError, apihttp.CodeInternal, "could not revoke session")
 		return
 	}
 	h.clearSessionCookie(c)

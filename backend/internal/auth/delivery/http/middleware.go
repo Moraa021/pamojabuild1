@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"pamojabuild1/backend/internal/apihttp"
 	"pamojabuild1/backend/internal/auth"
 )
 
@@ -12,15 +13,13 @@ func AuthMiddleware(authService auth.Service, cookieName string) gin.HandlerFunc
 	return func(c *gin.Context) {
 		token, err := c.Cookie(cookieName)
 		if err != nil || token == "" {
-			c.JSON(http.StatusUnauthorized, ErrorResponse{Error: "auth_required", Message: "Valid session cookie required"})
-			c.Abort()
+			apihttp.WriteError(c, http.StatusUnauthorized, apihttp.CodeUnauthenticated, "valid session cookie required")
 			return
 		}
 
 		user, err := authService.Authenticate(c.Request.Context(), token)
 		if err != nil {
-			c.JSON(http.StatusUnauthorized, ErrorResponse{Error: "invalid_session", Message: "Invalid or expired session"})
-			c.Abort()
+			apihttp.WriteError(c, http.StatusUnauthorized, apihttp.CodeUnauthenticated, "invalid or expired session")
 			return
 		}
 

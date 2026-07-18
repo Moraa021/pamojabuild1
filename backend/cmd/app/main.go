@@ -13,6 +13,12 @@ import (
 	"pamojabuild1/backend/internal/config"
 )
 
+// @title                       PamojaBuild API
+// @version                     1.0
+// @description                 PamojaBuild backend API. Authenticated requests use a server-side session selected by the pamojabuild_session HttpOnly cookie. Browser clients must send credentials and use an exactly allowed CORS origin.
+// @securityDefinitions.apikey  CookieAuth
+// @in                          cookie
+// @name                        pamojabuild_session
 func main() {
 	cfg := config.Load()
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

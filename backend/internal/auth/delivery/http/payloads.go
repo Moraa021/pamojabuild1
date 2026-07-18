@@ -20,8 +20,8 @@ type AuthResponse struct {
 	ExpiresAt   time.Time `json:"expires_at"`
 }
 
-type ErrorResponse struct {
-	Error   string `json:"error"`
-	Message string `json:"message"`
-	Code    int    `json:"code"`
+type CurrentAccountResponse struct {
+	UserID      int64  `json:"user_id"`
+	IsAdmin     bool   `json:"is_admin"`
+	DisplayName string `json:"display_name"`
 }

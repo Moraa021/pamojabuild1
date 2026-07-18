@@ -80,3 +80,39 @@ func TestRegisterSetsSecureHttpOnlySessionCookieWithoutReturningToken(t *testing
 		t.Fatal("opaque session token must not be exposed to JavaScript")
 	}
 }
+
+func TestMeReturnsOnlyCurrentAccountDisplayState(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler := NewAuthHandler(stubAuthService{}, "pamojabuild_session", true)
+	router := gin.New()
+	router.GET("/me", func(c *gin.Context) {
+		c.Set("user", &auth.User{
+			ID:           42,
+			PhoneNumber:  "+254700000000",
+			PasswordHash: "must-not-leak",
+			DisplayName:  "Amina",
+			IsAdmin:      true,
+		})
+		handler.Me(c)
+	})
+	response := httptest.NewRecorder()
+
+	router.ServeHTTP(response, httptest.NewRequest(nethttp.MethodGet, "/me", nil))
+
+	if response.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200, got %d", response.Code)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body["user_id"] != float64(42) || body["display_name"] != "Amina" || body["is_admin"] != true {
+		t.Fatalf("unexpected account response: %#v", body)
+	}
+	if _, exposed := body["phone_number"]; exposed {
+		t.Fatal("phone number must not be exposed by the session restore endpoint")
+	}
+	if _, exposed := body["password_hash"]; exposed {
+		t.Fatal("password hash must never be exposed")
+	}
+}

@@ -209,6 +209,7 @@ func newRouter(db *sql.DB, cfg *config.Config, lightningNode lightning.NodeClien
 		protected := api.Group("")
 		protected.Use(authHandler.AuthMiddleware(authSvc, sessionCookieName))
 		{
+			protected.GET("/auth/me", authH.Me)
 			protected.POST("/auth/signout", authH.SignOut)
 
 			tasks := protected.Group("/tasks")
