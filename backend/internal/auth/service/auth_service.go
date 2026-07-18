@@ -2,161 +2,149 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 	"unicode"
 
-	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 
 	"pamojabuild1/backend/internal/auth"
 )
 
-const (
-	tokenIssuer = "pamojabuild"
-	tokenTTL    = 24 * time.Hour
-)
+const sessionTTL = 24 * time.Hour
 
 var (
 	ErrInvalidCredentials = errors.New("invalid credentials")
 	ErrUserExists         = errors.New("user already exists")
-	ErrInvalidToken       = errors.New("invalid token")
+	ErrInvalidSession     = errors.New("invalid or expired session")
 	ErrInvalidPhone       = errors.New("phone number must use international format, for example +254700000000")
 	ErrWeakPassword       = errors.New("password must contain at least 8 characters")
 	ErrInvalidDisplayName = errors.New("display name is required")
-	ErrUnsafeJWTSecret    = errors.New("JWT secret must contain at least 32 characters")
 )
 
-type tokenClaims struct {
-	UserID       int64 `json:"uid"`
-	TokenVersion int64 `json:"ver"`
-	jwt.RegisteredClaims
-}
-
 type AuthService struct {
-	repo      auth.Repository
-	jwtSecret []byte
+	repo auth.Repository
 }
 
-func NewAuthService(repo auth.Repository, jwtSecret string) (*AuthService, error) {
-	if len(jwtSecret) < 32 {
-		return nil, ErrUnsafeJWTSecret
-	}
-	return &AuthService{repo: repo, jwtSecret: []byte(jwtSecret)}, nil
+func NewAuthService(repo auth.Repository) *AuthService {
+	return &AuthService{repo: repo}
 }
 
-func (s *AuthService) Register(ctx context.Context, phone, password, displayName string) (*auth.User, string, error) {
+func (s *AuthService) Register(ctx context.Context, phone, password, displayName string) (*auth.Session, error) {
 	normalizedPhone, err := normalizePhoneNumber(phone)
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
 	if len(password) < 8 {
-		return nil, "", ErrWeakPassword
+		return nil, ErrWeakPassword
 	}
 	displayName = strings.TrimSpace(displayName)
 	if displayName == "" {
-		return nil, "", ErrInvalidDisplayName
+		return nil, ErrInvalidDisplayName
 	}
 
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
-		return nil, "", fmt.Errorf("hash password: %w", err)
+		return nil, fmt.Errorf("hash password: %w", err)
 	}
 
+	session, err := newSession()
+	if err != nil {
+		return nil, err
+	}
 	user := &auth.User{
 		PhoneNumber:  normalizedPhone,
 		PasswordHash: string(hashedPassword),
 		DisplayName:  displayName,
 	}
-	if err := s.repo.Create(ctx, user); err != nil {
-		if errors.Is(err, auth.ErrPhoneNumberTaken) {
-			return nil, "", ErrUserExists
-		}
-		return nil, "", fmt.Errorf("create account: %w", err)
-	}
+	session.User = user
 
-	token, err := s.generateToken(user)
-	if err != nil {
-		return nil, "", err
+	// Account, optional profile, and first session are committed together. A
+	// partial registration must never leave an account the caller cannot use.
+	if err := s.repo.Create(ctx, user, session); err != nil {
+		if errors.Is(err, auth.ErrPhoneNumberTaken) {
+			return nil, ErrUserExists
+		}
+		return nil, fmt.Errorf("create account: %w", err)
 	}
-	return user, token, nil
+	return session, nil
 }
 
-func (s *AuthService) SignIn(ctx context.Context, phone, password string) (*auth.User, string, error) {
+func (s *AuthService) SignIn(ctx context.Context, phone, password string) (*auth.Session, error) {
 	normalizedPhone, err := normalizePhoneNumber(phone)
 	if err != nil {
-		return nil, "", ErrInvalidCredentials
+		return nil, ErrInvalidCredentials
 	}
 
 	user, err := s.repo.GetByPhone(ctx, normalizedPhone)
 	if err != nil {
-		return nil, "", ErrInvalidCredentials
+		return nil, ErrInvalidCredentials
 	}
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
-		return nil, "", ErrInvalidCredentials
+		return nil, ErrInvalidCredentials
 	}
 
-	token, err := s.generateToken(user)
+	session, err := newSession()
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
-	return user, token, nil
+	session.User = user
+	if err := s.repo.CreateSession(ctx, user.ID, session); err != nil {
+		return nil, fmt.Errorf("persist sign-in session: %w", err)
+	}
+	return session, nil
 }
 
-// SignOut increments a version stored with the account. Every JWT carries the
-// version it was issued under, so this invalidates all outstanding tokens even
-// though JWTs are otherwise self-contained and cannot be deleted server-side.
-func (s *AuthService) SignOut(ctx context.Context, userID int64) error {
-	if err := s.repo.IncrementTokenVersion(ctx, userID); err != nil {
+func (s *AuthService) SignOut(ctx context.Context, token string) error {
+	hash, err := hashSessionToken(token)
+	if err != nil {
+		// An invalid or already-cleared cookie is already signed out.
+		return nil
+	}
+	if err := s.repo.RevokeSession(ctx, hash); err != nil {
 		return fmt.Errorf("sign out: %w", err)
 	}
 	return nil
 }
 
-func (s *AuthService) generateToken(user *auth.User) (string, error) {
-	now := time.Now()
-	claims := tokenClaims{
-		UserID:       user.ID,
-		TokenVersion: user.TokenVersion,
-		RegisteredClaims: jwt.RegisteredClaims{
-			Issuer:    tokenIssuer,
-			Subject:   strconv.FormatInt(user.ID, 10),
-			IssuedAt:  jwt.NewNumericDate(now),
-			ExpiresAt: jwt.NewNumericDate(now.Add(tokenTTL)),
-		},
-	}
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	signed, err := token.SignedString(s.jwtSecret)
+func (s *AuthService) Authenticate(ctx context.Context, token string) (*auth.User, error) {
+	hash, err := hashSessionToken(token)
 	if err != nil {
-		return "", fmt.Errorf("sign authentication token: %w", err)
+		return nil, ErrInvalidSession
 	}
-	return signed, nil
-}
-
-func (s *AuthService) ValidateToken(ctx context.Context, tokenString string) (*auth.User, error) {
-	claims := &tokenClaims{}
-	token, err := jwt.ParseWithClaims(
-		tokenString,
-		claims,
-		func(token *jwt.Token) (interface{}, error) {
-			return s.jwtSecret, nil
-		},
-		jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
-		jwt.WithIssuer(tokenIssuer),
-		jwt.WithExpirationRequired(),
-	)
-	if err != nil || !token.Valid || claims.UserID <= 0 {
-		return nil, ErrInvalidToken
-	}
-
-	user, err := s.repo.GetByID(ctx, claims.UserID)
-	if err != nil || user.TokenVersion != claims.TokenVersion {
-		return nil, ErrInvalidToken
+	user, err := s.repo.GetBySessionHash(ctx, hash)
+	if err != nil {
+		return nil, ErrInvalidSession
 	}
 	return user, nil
+}
+
+func newSession() (*auth.Session, error) {
+	tokenBytes := make([]byte, 32)
+	if _, err := rand.Read(tokenBytes); err != nil {
+		return nil, fmt.Errorf("generate session token: %w", err)
+	}
+	token := base64.RawURLEncoding.EncodeToString(tokenBytes)
+	hash := sha256.Sum256([]byte(token))
+	return &auth.Session{
+		Token:     token,
+		TokenHash: hash[:],
+		ExpiresAt: time.Now().Add(sessionTTL),
+	}, nil
+}
+
+func hashSessionToken(token string) ([]byte, error) {
+	decoded, err := base64.RawURLEncoding.DecodeString(token)
+	if err != nil || len(decoded) != 32 {
+		return nil, ErrInvalidSession
+	}
+	hash := sha256.Sum256([]byte(token))
+	return hash[:], nil
 }
 
 // normalizePhoneNumber stores one canonical form so formatting differences

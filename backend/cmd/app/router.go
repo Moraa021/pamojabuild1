@@ -96,12 +96,13 @@ func NewRouterWithLightningNode(db *sql.DB, cfg *config.Config, lightningNode li
 func newRouter(db *sql.DB, cfg *config.Config, lightningNode lightning.NodeClient, listenerCtx context.Context) *gin.Engine {
 	eventBus := events.NewEventBus()
 
-	authRepo := authRepo.NewAuthRepository(db)
-	authSvc, err := authService.NewAuthService(authRepo, cfg.JWTSecret)
-	if err != nil {
-		panic(fmt.Sprintf("failed to configure authentication: %v", err))
+	sessionCookieName := cfg.SessionCookieName
+	if sessionCookieName == "" {
+		sessionCookieName = "pamojabuild_session"
 	}
-	authH := authHandler.NewAuthHandler(authSvc)
+	authRepo := authRepo.NewAuthRepository(db)
+	authSvc := authService.NewAuthService(authRepo)
+	authH := authHandler.NewAuthHandler(authSvc, sessionCookieName, cfg.SessionCookieSecure)
 
 	profileRepo := volunteerRepo.NewProfileRepository(db)
 	applicationRepo := volunteerRepo.NewApplicationRepository(db)
@@ -191,16 +192,7 @@ func newRouter(db *sql.DB, cfg *config.Config, lightningNode lightning.NodeClien
 
 	router := gin.Default()
 	router.Use(middleware.ErrorHandler(), middleware.RateLimiter(), middleware.ValidationMiddleware())
-	router.Use(func(c *gin.Context) {
-		c.Header("Access-Control-Allow-Origin", "*")
-		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		c.Header("Access-Control-Allow-Headers", "Content-Type, Authorization")
-		if c.Request.Method == "OPTIONS" {
-			c.AbortWithStatus(204)
-			return
-		}
-		c.Next()
-	})
+	router.Use(middleware.BrowserSecurity(cfg.CORSAllowedOrigins))
 
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok"})
@@ -215,7 +207,7 @@ func newRouter(db *sql.DB, cfg *config.Config, lightningNode lightning.NodeClien
 		}
 
 		protected := api.Group("")
-		protected.Use(authHandler.AuthMiddleware(authSvc))
+		protected.Use(authHandler.AuthMiddleware(authSvc, sessionCookieName))
 		{
 			protected.POST("/auth/signout", authH.SignOut)
 

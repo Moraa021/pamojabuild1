@@ -14,7 +14,6 @@ type SignInRequest struct {
 }
 
 type AuthResponse struct {
-	Token       string    `json:"token"`
 	UserID      int64     `json:"user_id"`
 	IsAdmin     bool      `json:"is_admin"`
 	DisplayName string    `json:"display_name"`

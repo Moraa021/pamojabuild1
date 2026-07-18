@@ -2,38 +2,31 @@ package http
 
 import (
 	"net/http"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 
 	"pamojabuild1/backend/internal/auth"
 )
 
-func AuthMiddleware(authService auth.Service) gin.HandlerFunc {
+func AuthMiddleware(authService auth.Service, cookieName string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		authHeader := c.GetHeader("Authorization")
-		if authHeader == "" {
-			c.JSON(http.StatusUnauthorized, ErrorResponse{Error: "auth_required", Message: "Authorization header required"})
+		token, err := c.Cookie(cookieName)
+		if err != nil || token == "" {
+			c.JSON(http.StatusUnauthorized, ErrorResponse{Error: "auth_required", Message: "Valid session cookie required"})
 			c.Abort()
 			return
 		}
 
-		tokenParts := strings.Fields(authHeader)
-		if len(tokenParts) != 2 || !strings.EqualFold(tokenParts[0], "Bearer") {
-			c.JSON(http.StatusUnauthorized, ErrorResponse{Error: "invalid_token", Message: "Invalid token format"})
-			c.Abort()
-			return
-		}
-
-		user, err := authService.ValidateToken(c.Request.Context(), tokenParts[1])
+		user, err := authService.Authenticate(c.Request.Context(), token)
 		if err != nil {
-			c.JSON(http.StatusUnauthorized, ErrorResponse{Error: "invalid_token", Message: "Invalid or expired token"})
+			c.JSON(http.StatusUnauthorized, ErrorResponse{Error: "invalid_session", Message: "Invalid or expired session"})
 			c.Abort()
 			return
 		}
 
 		c.Set("user", user)
 		c.Set("user_id", user.ID)
+		c.Set("session_token", token)
 		c.Next()
 	}
 }
