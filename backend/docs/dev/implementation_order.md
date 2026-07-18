@@ -127,3 +127,98 @@ transaction under the task-row lock: mark the old assignment replaced, create
 or activate the new assignment, recheck the volunteer cap and conflicts, and
 append audit events. The API should expose a deliberate replacement action
 rather than a generic assignment update endpoint.
+
+### Whether final volunteer submission automatically requests verification
+
+**Decision needed:** At the start of step 6, before submission finality,
+evidence review, assignment statuses, and notification behavior are designed.
+
+**Recommendation:** Do not move the task merely because every volunteer
+uploaded something. Treat uploads as submitted evidence that the creator can
+accept or return for rework. When the creator accepts the final outstanding
+active assignment, automatically and atomically move the task to
+`pending_verification`. This removes the redundant separate “request
+verification” action without allowing an accidental or incomplete upload to
+advance the whole task.
+
+The creator still needs to know when evidence arrives. For the initial product,
+use a durable in-app notification feed and clear dashboard counts rather than
+SMS or a messaging provider. A phone number used for authentication is not
+automatically consent to operational or promotional messages. Add SMS later
+only if field testing shows in-app notifications are insufficient, with
+explicit consent, delivery tracking, cost controls, retry handling, and an
+approved provider.
+
+**Architecture impact:** Step 6 needs assignment/submission review states and a
+transaction that locks the task, accepts one submission, checks whether all
+active assignments are accepted, and performs the state transition when the
+last one clears. Notifications should be durable rows, not only in-memory
+events, with read timestamps and idempotent event references. If external
+messaging is added later, publish it through an outbox/worker so a provider
+failure cannot roll back submission or state changes.
+
+### Cancellation, failed tasks, unavailable trustees, and donor refunds
+
+**Decision needed:** Define the user-facing cancellation/refund policy before
+step 7 accepts production donations. Trustee liveness and cryptographic
+recovery must be decided during step 5 and finalized before step 9 creates
+3-of-5 vaults.
+
+**Recommendation:** Support platform-triggered refunds when a task cannot
+proceed, but do not let a creator immediately send money elsewhere or silently
+cancel after work begins.
+
+- Give recruitment a disclosed deadline. If no volunteer is active by that
+  deadline, stop donations and enter a cancellation/refund review.
+- Before work starts, allow the creator to request cancellation; after work
+  starts, require independent review because volunteers may have performed work
+  and earned a claim.
+- If work fails or becomes impossible, preserve submissions and decisions,
+  determine any legitimate incurred costs, and refund the remaining refundable
+  balance under a recorded policy.
+- If fewer than three trustees approve a payout, wait, notify, and use the
+  trustee replacement/recovery process. Never silently lower the 3-of-5 payout
+  threshold.
+- Trustee availability must be checked before donations and before funds move
+  into a vault. Replacing a trustee after funds are already in a 3-of-5 script
+  cannot make the old vault spendable without enough existing keys. Step 9 must
+  therefore define a reviewed recovery script or explicitly accept permanent
+  lock risk before real funds are vaulted.
+
+**Architecture impact:** The current linear work and financial graphs need
+explicit cancellation/refund branches rather than overloading `ARCHIVED` or
+`SYSTEM_LOCKDOWN`, for example cancellation requested/approved and
+`REFUNDING -> REFUNDED`. Tasks need recruitment and execution deadlines.
+Donations must be attributable to authenticated donor accounts and immutable
+donation records; the current invoice record alone is insufficient for a
+refund. Refund execution needs a donor-provided destination, amount and fee
+policy, idempotency, ledger debits, retryable partial-failure handling, and
+proof that the same donation cannot be refunded twice. L1 refunds must still
+satisfy the vault's cryptographic spending policy.
+
+### Whether an individual donor can request a refund
+
+**Decision needed:** Set the policy and disclose it in the UI before step 7
+accepts production donations. Implement any approved exceptional-refund path
+alongside the refund/payout orchestrator in step 11.
+
+**Recommendation:** Do not offer an unconditional change-of-mind refund after a
+Lightning payment settles. Donations need enough finality for creators and
+volunteers to rely on the available budget. An unpaid or expired invoice needs
+no refund. A settled donation should become refund-eligible only when the task
+is cancelled, the platform confirms a duplicate/incorrect charge, or a defined
+fraud or operational-error policy applies.
+
+A donor may submit a refund request for those exceptional cases, but submission
+should not promise approval. The UI should clearly disclose finality,
+cancellation conditions, treatment of unavoidable network/provider fees, and
+the expected refund method before the donor pays.
+
+**Architecture impact:** Store donor identity on each donation credit and add
+auditable `refund_requests` and `refunds` records with reason, status, reviewer,
+destination, approved amount, fee treatment, transaction/payment reference,
+and idempotency key. Lightning does not provide a reusable “return address,” so
+an approved Lightning refund normally requires a fresh invoice from the
+authenticated donor. Refund reservations and execution must share the ledger
+and orchestration controls used for payouts so refundable funds cannot also be
+paid to volunteers.
