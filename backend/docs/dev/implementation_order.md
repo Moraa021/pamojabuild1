@@ -19,11 +19,11 @@ Status key: `NEXT`, `PENDING`, `DONE`, `BLOCKED`.
 
 1. **`DONE` — PostgreSQL and migrations:** The application is PostgreSQL-only, uses a clean versioned baseline with `golang-migrate` up/down migrations, never migrates during API startup, and runs database integration tests against PostgreSQL through `TEST_DATABASE_URL`.
 2. **`DONE` — Accounts and authorization:** Accounts are general, admin is the only global capability, authentication uses revocable server-side sessions in secure HttpOnly cookies, actor IDs come from authentication, trustee payout routes require task membership, and PostgreSQL enforces the trustee/volunteer conflict.
-3. **`NEXT` — API contracts:** Standardize request/response DTOs, errors, validation, and OpenAPI documentation.
-4. **`PENDING` — Task state machines:** Enforce work and financial transitions with authorization, conditional updates, history, idempotency, and recovery rules.
+3. **`DONE` — API contracts:** Registered routes use explicit snake_case DTOs, one safe error envelope, strict request decoding, service validation, intentional HTTP status codes, documented cookie authentication, paginated task filters, and `/auth/me`; frontend integration changes are recorded in `frontend_handoff.md`.
+4. **`NEXT` — Task state machines:** Enforce work and financial transitions with authorization, conditional updates, history, idempotency, and recovery rules.
 5. **`PENDING` — Trustee onboarding:** Implement nomination, acceptance, unique membership, key proof/validation, public roster data, replacement, and rotation.
 6. **`PENDING` — Volunteer workflow:** Implement self-assignment, applications, selection, capacity, submissions, evidence review, verification, and conflict-safe completion.
-7. **`PENDING` — Lightning donations:** Require eligible active tasks, complete invoice status/history behavior, and harden settlement recovery and reconciliation.
+7. **`PENDING` — Lightning donations:** Complete invoice status/history behavior and harden settlement recovery, accounting delivery, and reconciliation; invoice creation already requires an existing `ACTIVE` task.
 8. **`PENDING` — Ledger:** Add transactional, PostgreSQL-safe appends; unique references; explicit debits/credits; durable events; integrity checkpoints; and reconciliation.
 9. **`PENDING` — Escrow and swaps:** Implement xpub validation, deterministic 3-of-5 vaults, derivation/UTXO records, and Lightning-to-on-chain swaps.
 10. **`PENDING` — PSBT engine:** Implement immutable payout intents, PSBT construction, signer validation, signature collection, replay protection, and finalization.

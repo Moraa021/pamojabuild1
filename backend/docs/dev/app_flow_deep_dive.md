@@ -60,8 +60,9 @@ These lifecycles should coordinate, but they are not the same thing.
 
 | Area | Status today | Plain-language meaning |
 |---|---|---|
-| Registration and sign-in | Hardened foundation | Accounts are general, phone numbers are canonicalized, passwords are hashed, and opaque server-side sessions are revocable per device and delivered in HttpOnly cookies. |
-| Task creation/list/detail | Basic implementation | Tasks can be stored and fetched. State changes are not strictly controlled. |
+| Registration and sign-in | Hardened foundation | Accounts are general, phone numbers are canonicalized, passwords are hashed, opaque server-side sessions are revocable per device and delivered in HttpOnly cookies, and `/auth/me` restores display-safe account state. |
+| API contracts | Implemented foundation | Registered routes use explicit snake_case DTOs, strict JSON decoding, one safe error envelope, service validation, documented cookie auth, and intentional HTTP status distinctions. |
+| Task creation/list/detail | Basic implementation with stable contracts | Tasks can be stored and fetched through explicit DTOs and paginated filters. State changes are not strictly controlled. |
 | Volunteer application | Partial | A volunteer can apply. No API exists for a creator/admin to approve or reject the application. |
 | Work submission | Partial | An approved volunteer can submit evidence. Approval is currently only practical through direct DB changes/tests. |
 | Lightning invoice creation | Implemented foundation | Real gRPC and REST LND clients exist, invoices are saved, and status can be queried. |
@@ -211,6 +212,49 @@ The main wiring and real registered routes are in [router.go](../../cmd/app/rout
 
 The event bus is in memory and calls subscribers synchronously. Its history disappears when the process stops. It is useful scaffolding, not a durable production message system.
 
+### API contract conventions
+
+Registered API routes never serialize domain or database structs directly.
+Handlers map them to explicit response DTOs with snake_case JSON fields. JSON
+write requests accept exactly one object and reject unknown fields. This is
+security-relevant for actor fields: `creator_id`, `volunteer_id`, trustee
+`user_id`, and payout signer public keys cannot be smuggled into otherwise valid
+requests and silently ignored.
+
+All API failures use:
+
+```json
+{
+  "error": "validation_error",
+  "message": "request validation failed",
+  "fields": {
+    "display_name": "is required"
+  }
+}
+```
+
+`fields` is optional. Handlers return safe messages rather than raw SQL,
+binding, or infrastructure errors. Status semantics are:
+
+| Status | Meaning |
+|---|---|
+| `400 Bad Request` | Malformed JSON, unknown fields, invalid query parameters, or service validation failure. |
+| `401 Unauthorized` | No valid server-side cookie session; in domain language this means unauthenticated. |
+| `403 Forbidden` | Authenticated, but missing the task relationship/capability required for the operation. |
+| `404 Not Found` | Route or requested resource does not exist. |
+| `409 Conflict` | Duplicate data, incompatible task relationship, non-donatable state, or another current-state conflict. |
+| `500 Internal Server Error` | Unexpected repository or infrastructure failure, reported without internal details. |
+
+List endpoints return named arrays. Task listing additionally uses `page`
+(default 1) and `page_size` (default 20, maximum 100), with
+`total_items`/`total_pages` metadata. Existing `category`, `region`, and
+`status` filters apply before pagination.
+
+Swagger comments describe only registered routes and declare `CookieAuth` as
+the default `pamojabuild_session` cookie. The deployed cookie name remains
+configurable. Browser callers must use credentialed requests; the cookie is
+HttpOnly and never appears in response JSON.
+
 ### PostgreSQL and migrations
 
 PostgreSQL is the only application database. `DATABASE_URL` is required and must use a `postgres://` or `postgresql://` URL. The API server connects to the existing schema but never applies DDL during startup.
@@ -267,7 +311,7 @@ value in JSON, so normal frontend JavaScript cannot read it.
 
 - The frontend must stop sending or navigating by a registration `role`.
 - All application routes except registration/sign-in require a valid session, including task browsing and donating.
-- There is no `GET /auth/me` endpoint yet, so the frontend cannot restore account display state after a page refresh without another request design change.
+- `GET /api/v1/auth/me` now returns `user_id`, `display_name`, and `is_admin` so the frontend can restore display state after refresh. A `401` clears that state.
 - Cookie authentication requires exact credentialed CORS origins and CSRF controls. The backend now rejects unlisted origins and browser cross-site mutations; deployment must configure `CORS_ALLOWED_ORIGINS`.
 - Production requires HTTPS because session cookies are `Secure` by default. Local HTTP development must explicitly set `SESSION_COOKIE_SECURE=false`.
 - The ledger HMAC secret still has an insecure fallback; ledger hardening remains implementation step 8.
@@ -327,17 +371,14 @@ Schema: [initial PostgreSQL migration](../../db/migrations/20260718132603_initia
 
 ### Response
 
-The handler returns the Go `task.Task` directly. Because that domain struct has no JSON tags, Go's default field names are capitalized (`ID`, `Slug`, `FinancialState`, etc.), while the frontend reads lowercase snake-case (`task.slug`, `task.financial_state`).
-
-This is a major API contract mismatch. The defined `TaskResponse` with correct JSON tags is not actually used for the response.
+The handler maps the task domain object into an explicit `TaskResponse`.
+Creation and detail responses therefore use stable lowercase snake_case
+(`id`, `slug`, `creator_id`, `financial_state`, and so on) rather than Go field
+names. Duplicate title-derived slugs return `409 Conflict`.
 
 ### Missing work
 
-- Set creator from the authenticated user.
 - Decide who is allowed to create campaigns.
-- Validate category, region, goal, max volunteers, and volunteer mode on the backend.
-- Handle duplicate slugs instead of returning a generic 500.
-- Use explicit API response DTOs.
 - Create trustee onboarding records/invitations as part of a defined setup workflow.
 - Add creator/admin endpoints for managing applications and task progress.
 
@@ -348,7 +389,9 @@ Endpoints:
 - `GET /api/v1/tasks`
 - `GET /api/v1/tasks/:slug`
 
-The list endpoint can accept `category`, `region`, and `status` query filters, but most frontend pages fetch all tasks and filter in the browser.
+The list endpoint accepts `category`, `region`, and `status` query filters plus
+`page` and `page_size`. It returns `{ "tasks": [...], "pagination": {...} }`.
+Most frontend pages still fetch the first page and filter in the browser.
 
 The repository reads `tasks`; related donations, applications, trustees, and ledger balances are not joined into the response. Therefore a task detail response does not currently include:
 
@@ -389,12 +432,13 @@ The response is:
 
 ### Backend request path
 
-1. [Lightning handler](../../internal/lightning/delivery/http/handler.go) validates `amount_sats > 0`.
-2. [Lightning service](../../internal/lightning/service/lightning_service.go) asks the configured LND client to create a one-hour invoice.
-3. The LND adapter uses gRPC by default or REST if configured.
-4. The service validates that LND returned a payment request and a 32-byte payment hash represented by 64 hex characters.
-5. [Lightning repository](../../internal/lightning/repository/postgres.go) inserts the invoice into `lightning_invoices`.
-6. Only after the DB insert succeeds does the API return the invoice to the donor.
+1. [Lightning handler](../../internal/lightning/delivery/http/handler.go) decodes the explicit request DTO.
+2. [Lightning service](../../internal/lightning/service/lightning_service.go) validates `amount_sats > 0`, loads the task, and requires `financial_state = ACTIVE`.
+3. Only then does the service ask the configured LND client to create a one-hour invoice.
+4. The LND adapter uses gRPC by default or REST if configured.
+5. The service validates that LND returned a payment request and a 32-byte payment hash represented by 64 hex characters.
+6. [Lightning repository](../../internal/lightning/repository/postgres.go) inserts the invoice into `lightning_invoices`.
+7. Only after the DB insert succeeds does the API return the invoice to the donor.
 
 That save-before-return ordering matters: a donor should not receive a payable invoice that the application cannot later connect to a task.
 
@@ -441,8 +485,7 @@ This is one of the stronger current flows: it includes input validation, unique 
 
 ### Important gaps
 
-- Donation creation does not fetch the task or enforce its financial state. A valid slug is not checked before asking LND, and the database foreign key may be the first failure.
-- The frontend considers `ACTIVE` **and `LIQUIDATING`** donatable. The architecture says `LIQUIDATING` blocks new donations. This must be made consistent, with the backend authoritative.
+- The backend now treats only `ACTIVE` as donatable. The frontend still considers `LIQUIDATING` donatable and must be corrected.
 - No donor identity or donation history is recorded. The invoice belongs to a task but not to a donor.
 - The UI does not poll settlement status or show a confirmed donation.
 - The invoice response differs from names/examples in `architecture_v1.md`; choose one OpenAPI contract.
@@ -693,6 +736,9 @@ Schema: [initial PostgreSQL migration](../../db/migrations/20260718132603_initia
 
 The backend now ignores any browser-supplied identity and uses the authenticated account ID. The database also rejects either direction of a same-task trustee/volunteer conflict.
 
+The registration response is an explicit object containing only `task_slug`,
+`trustee_index`, and the authenticated `user_id`; key material is not echoed.
+
 ### Why it is still unsafe today
 
 - There is no invitation/nomination record proving the user was selected.
@@ -701,7 +747,7 @@ The backend now ignores any browser-supplied identity and uses the authenticated
 - Xpub is only checked superficially in the browser; backend does not parse it, validate network/version, or prove key ownership.
 - Browser public keys are not validated at registration.
 - Slot assignment checks then writes in separate operations, creating a race. The repository also uses an upsert, so direct/concurrent behavior can replace a slot.
-- There is no trustee list route registered even though a handler exists.
+- There is no trustee list route registered; the earlier unregistered handler was removed so generated API documentation does not advertise a nonexistent endpoint.
 - No replacement/key rotation history or revocation exists.
 - Private browser keys are not persisted safely. The generated key is stored in a local variable and is not connected to the payout page's separate `_sessionPrivateKey` variable.
 
@@ -844,9 +890,12 @@ Endpoint:
 GET /api/v1/trustees/payouts/:slug
 ```
 
-The handler accepts optional `destination_address` and `volunteer_invoice` query values, but the service ignores them after reading balance/trustees.
+The handler no longer accepts `destination_address` or `volunteer_invoice`
+query values. A later payout-intent workflow must derive and freeze those
+server-side rather than allowing a review URL to select destinations.
 
-It requires five trustee rows and reads the basic ledger balance. It then returns:
+It requires five trustee rows and reads the basic ledger balance. It then returns
+an explicit placeholder DTO:
 
 ```json
 {
@@ -872,23 +921,24 @@ Request:
 
 ```json
 {
-  "trustee_public_key_hex": "04...",
   "layer1_psbt_signature_fragment": "some text",
   "layer2_web_crypto_signature": "some text"
 }
 ```
 
-The backend stores it in `payout_signatures`. The primary key is `(task_slug, trustee_public_key_hex)`, so repeating the same supplied public-key string updates one row.
+The backend derives the signer key from the authenticated account's trustee row
+for the task and stores the placeholder fragments in `payout_signatures`. The
+primary key is `(task_slug, trustee_public_key_hex)`, so repeating a submission
+from that stored trustee key updates one row.
 
 Then it counts rows. At three rows it publishes `threshold.reached`, whose router subscriber calls payout finalization.
 
 ### Why this is not approval yet
 
-The backend currently does **not**:
+The backend now binds a submitted row to the authenticated task trustee's stored
+key, but it still does **not**:
 
-- authenticate that the caller owns the submitted public key;
-- check that the key belongs to a trustee assigned to this task;
-- prevent one user from submitting three invented public-key strings;
+- prove that the caller owns the stored key;
 - verify the Layer 2 signature;
 - parse or verify the PSBT fragment;
 - ensure all signatures cover the same payout intent;
@@ -934,7 +984,7 @@ Failures need explicit resumable states. If L1 broadcasts but L2 fails, retry on
 
 | User action | Frontend source | API | Backend path | Main tables |
 |---|---|---|---|---|
-| Register/sign in | auth pages | `/auth/*` | auth handler/service/repo | `users` |
+| Register/sign in/restore | auth pages | `/auth/register`, `/auth/signin`, `/auth/me` | auth handler/service/repo | `users`, `user_sessions` |
 | Create campaign | create campaign page | `POST /tasks` | task handler/service/repo | `tasks`, then `ledger_entries` |
 | Browse/detail | task pages/stores | `GET /tasks*` | task handler/service/repo | `tasks` |
 | Apply | volunteer detail modal | `POST /tasks/:slug/apply` | volunteer application service/repo | `task_applications`, `ledger_entries` |
@@ -948,7 +998,7 @@ Failures need explicit resumable states. If L1 broadcasts but L2 fails, retry on
 | Review payout | payout page/store | `GET /trustees/payouts/:slug` | escrow placeholder | reads `trustee_keys`, `ledger_entries`; returns placeholders |
 | Sign payout | payout page/store | `POST /trustees/payouts/:slug/sign` | escrow placeholder | `payout_signatures` |
 | Execute payout | Event-triggered placeholder | None | escrow log only | no meaningful writes |
-| View earnings | volunteer pages | `GET /volunteers/payments` | profile summary only | `volunteer_profiles`; payment table is not returned |
+| View earnings | volunteer pages | `GET /volunteers/payments` | explicit payment list | `volunteer_payments` (normally empty until payout work) |
 
 ## Database table guide
 
@@ -956,7 +1006,7 @@ Failures need explicit resumable states. If L1 broadcasts but L2 fails, retry on
 |---|---|---|
 | `users` | General login identity, password hash, display name, and global admin flag | Formal admin promotion/removal workflow is not implemented. |
 | `user_sessions` | SHA-256 hashes of active/revoked per-device login sessions and their expiries | Cleanup, device labels, “sign out all,” and session-management UI are not implemented. |
-| `tasks` | Campaign details plus work and financial current states | No state history/version; loose validation; no payout link. |
+| `tasks` | Campaign details plus work and financial current states | Creation input is validated, but state transitions/history and payout linkage remain loose or missing. |
 | `volunteer_profiles` | Bio, skills, payout addresses, reputation totals | Auto-created with the account; partial updates overwrite unrelated values. |
 | `task_applications` | Volunteer requests to join tasks | Unique per task/account and conflict-guarded against trustees; no approval API; capacity rules missing. |
 | `task_submissions` | Work descriptions and evidence URL arrays | No review API; weak evidence model; multiple-submission policy unclear. |
@@ -1020,22 +1070,19 @@ Tables still needed or needing redesign for later phases likely include:
 
 ### Priority 0: make the current API/task flow coherent
 
-1. Use explicit response DTOs so backend JSON matches frontend snake-case fields.
-2. Complete frontend integration with general accounts and cookie sessions.
-3. Add the authenticated account (`GET /auth/me`) contract and finish endpoint ownership policies.
-4. Fix the application request contract and implement creator application review.
-5. Define and enforce the work lifecycle; register only the intended transition routes.
-6. Align frontend submission/history/complete calls with real backend endpoints.
-7. Make task browsing/donation publicity an explicit product decision.
+1. Complete frontend integration with general accounts, credentialed cookie sessions, and `/auth/me`.
+2. Implement creator application review; the application request/response contract is now standardized.
+3. Define and enforce the work lifecycle; register only the intended transition routes.
+4. Align frontend submission/history/complete calls with real backend endpoints.
+5. Make task browsing/donation publicity an explicit product decision.
 
 ### Priority 1: finish safe incoming-money accounting
 
-1. Enforce task existence and `ACTIVE` before invoice creation.
-2. Add frontend invoice status polling/confirmation.
-3. Make settlement-to-ledger atomic or durably retryable with an outbox/inbox.
-4. Add unique ledger idempotency references and multi-instance-safe appends.
-5. Redesign balance accounting around explicit debits/credits and fees.
-6. Reconcile the database against LND and alert on drift.
+1. Add frontend invoice status polling/confirmation.
+2. Make settlement-to-ledger atomic or durably retryable with an outbox/inbox.
+3. Add unique ledger idempotency references and multi-instance-safe appends.
+4. Redesign balance accounting around explicit debits/credits and fees.
+5. Reconcile the database against LND and alert on drift.
 
 ### Priority 2: freeze the trustee and escrow design before coding payout
 
