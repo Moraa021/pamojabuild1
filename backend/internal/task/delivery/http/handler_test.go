@@ -16,8 +16,11 @@ import (
 )
 
 type stubTaskService struct {
-	created *task.Task
-	list    *task.ListResult
+	created     *task.Task
+	list        *task.ListResult
+	stateResult *task.StateTransitionResult
+	stateErr    error
+	actorID     *int64
 }
 
 func (s stubTaskService) CreateCampaign(context.Context, *task.Task) (*task.Task, error) {
@@ -29,11 +32,23 @@ func (s stubTaskService) GetTask(context.Context, string) (*task.Task, error) {
 func (s stubTaskService) ListTasks(context.Context, task.ListOptions) (*task.ListResult, error) {
 	return s.list, nil
 }
-func (s stubTaskService) TransitionVolunteerStatus(context.Context, string, string) error {
-	return nil
+func (s *stubTaskService) StartTask(_ context.Context, _ string, actorID int64, _, _ string) (*task.StateTransitionResult, error) {
+	if s.actorID != nil {
+		*s.actorID = actorID
+	}
+	return s.stateResult, s.stateErr
 }
-func (s stubTaskService) TransitionFinancialState(context.Context, string, string) error {
-	return nil
+func (s *stubTaskService) SubmitForVerification(context.Context, string, int64, string, string) (*task.StateTransitionResult, error) {
+	return &task.StateTransitionResult{}, nil
+}
+func (s *stubTaskService) VerifyTask(context.Context, string, int64, string, string) (*task.StateTransitionResult, error) {
+	return &task.StateTransitionResult{}, nil
+}
+func (s *stubTaskService) AdvanceFinancialState(context.Context, string, string, string, string) (*task.StateTransitionResult, error) {
+	return &task.StateTransitionResult{}, nil
+}
+func (s *stubTaskService) ListStateTransitions(context.Context, string, task.StateHistoryOptions) (*task.StateHistoryResult, error) {
+	return &task.StateHistoryResult{}, nil
 }
 
 func taskHandlerRouter(handler *TaskHandler) *gin.Engine {
@@ -44,12 +59,16 @@ func taskHandlerRouter(handler *TaskHandler) *gin.Engine {
 		handler.CreateTask(c)
 	})
 	router.GET("/tasks", handler.ListTasks)
+	router.POST("/tasks/:slug/start", func(c *gin.Context) {
+		c.Set("user_id", int64(42))
+		handler.StartTask(c)
+	})
 	return router
 }
 
 func TestCreateTaskReturnsExplicitSnakeCaseDTO(t *testing.T) {
 	createdAt := time.Now().UTC()
-	router := taskHandlerRouter(NewTaskHandler(stubTaskService{created: &task.Task{
+	router := taskHandlerRouter(NewTaskHandler(&stubTaskService{created: &task.Task{
 		ID:             7,
 		Slug:           "clean-water",
 		CreatorID:      42,
@@ -82,7 +101,7 @@ func TestCreateTaskReturnsExplicitSnakeCaseDTO(t *testing.T) {
 }
 
 func TestCreateTaskRejectsClientSelectedCreatorID(t *testing.T) {
-	router := taskHandlerRouter(NewTaskHandler(stubTaskService{}))
+	router := taskHandlerRouter(NewTaskHandler(&stubTaskService{}))
 	request := httptest.NewRequest(nethttp.MethodPost, "/tasks", strings.NewReader(
 		`{"creator_id":99,"title":"Clean Water","description":"Repair pump","category":"community","region":"Kisumu","max_volunteers":2,"volunteer_mode":"open"}`,
 	))
@@ -104,7 +123,7 @@ func TestCreateTaskRejectsClientSelectedCreatorID(t *testing.T) {
 }
 
 func TestListTasksReturnsPaginationMetadata(t *testing.T) {
-	router := taskHandlerRouter(NewTaskHandler(stubTaskService{list: &task.ListResult{
+	router := taskHandlerRouter(NewTaskHandler(&stubTaskService{list: &task.ListResult{
 		Tasks: []task.Task{},
 		Total: 45,
 	}}))
@@ -121,5 +140,62 @@ func TestListTasksReturnsPaginationMetadata(t *testing.T) {
 	}
 	if body.Pagination.Page != 2 || body.Pagination.TotalPages != 3 || body.Tasks == nil {
 		t.Fatalf("unexpected list response: %#v", body)
+	}
+}
+
+func TestStartTaskRequiresIdempotencyHeader(t *testing.T) {
+	router := taskHandlerRouter(NewTaskHandler(&stubTaskService{}))
+	request := httptest.NewRequest(nethttp.MethodPost, "/tasks/community-garden/start", strings.NewReader(`{}`))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+
+	router.ServeHTTP(response, request)
+
+	if response.Code != nethttp.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", response.Code, response.Body.String())
+	}
+	var body apihttp.ErrorResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.Error != apihttp.CodeValidation || body.Fields["idempotency_key"] == "" {
+		t.Fatalf("unexpected missing header response: %#v", body)
+	}
+}
+
+func TestStartTaskUsesSessionActorAndReturnsReplayMetadata(t *testing.T) {
+	var capturedActor int64
+	service := &stubTaskService{
+		actorID: &capturedActor,
+		stateResult: &task.StateTransitionResult{
+			Replayed: true,
+			Transitions: []task.StateTransition{{
+				ID:        8,
+				StateKind: task.StateKindWork,
+				ToState:   task.WorkStateInProgress,
+				Version:   2,
+			}},
+		},
+	}
+	router := taskHandlerRouter(NewTaskHandler(service))
+	request := httptest.NewRequest(nethttp.MethodPost, "/tasks/community-garden/start", strings.NewReader(`{"reason":"ready"}`))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Idempotency-Key", "frontend-retry-1")
+	response := httptest.NewRecorder()
+
+	router.ServeHTTP(response, request)
+
+	if response.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if capturedActor != 42 {
+		t.Fatalf("expected session actor 42, got %d", capturedActor)
+	}
+	var body StateActionResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !body.Replayed || len(body.Transitions) != 1 || body.Transitions[0].ToState != task.WorkStateInProgress {
+		t.Fatalf("unexpected action response: %#v", body)
 	}
 }

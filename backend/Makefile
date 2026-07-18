@@ -24,7 +24,7 @@ test-unit:
 .PHONY: test-postgres
 test-postgres:
 	@test -n "$(TEST_DATABASE_URL)" || (echo "TEST_DATABASE_URL is required" && exit 1)
-	go test ./cmd/app ./internal/lightning/repository -count=1
+	go test ./cmd/app ./internal/authorization ./internal/lightning/repository ./internal/task/repository -count=1
 
 .PHONY: test-e2e
 test-e2e:

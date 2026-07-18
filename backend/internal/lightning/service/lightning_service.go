@@ -68,7 +68,7 @@ func (s *LightningService) RequestDonationInvoice(ctx context.Context, taskSlug 
 			}
 			return nil, fmt.Errorf("load donation task: %w", err)
 		}
-		if donationTask.FinancialState != "ACTIVE" {
+		if donationTask.FinancialState != task.FinancialStateActive {
 			return nil, ErrDonationsNotAllowed
 		}
 	}

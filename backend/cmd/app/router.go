@@ -118,13 +118,13 @@ func newRouter(db *sql.DB, cfg *config.Config, lightningNode lightning.NodeClien
 	volunteerH := volunteerHandler.NewVolunteerHandler(volunteerSvc, applicationSvc, submissionSvc, reputationSvc)
 
 	taskRepo := taskRepo.NewTaskRepository(db)
-	taskSvc := taskService.NewTaskService(taskRepo, eventBus)
+	taskAuthorization := authorization.NewRepository(db)
+	taskSvc := taskService.NewTaskService(taskRepo, taskAuthorization, eventBus)
 	taskH := taskHandler.NewTaskHandler(taskSvc)
 
 	trusteeRepo := trusteeRepo.NewTrusteeRepository(db)
 	trusteeSvc := trusteeService.NewTrusteeService(trusteeRepo, eventBus)
 	trusteeH := trusteeHandler.NewTrusteeHandler(trusteeSvc)
-	taskAuthorization := authorization.NewRepository(db)
 
 	lightningRepo := lightningRepo.NewLightningRepository(db)
 	lightningSvc := lightningService.NewLightningService(lightningRepo, lightningNode, cfg, eventBus, taskRepo)
@@ -159,9 +159,6 @@ func newRouter(db *sql.DB, cfg *config.Config, lightningNode lightning.NodeClien
 	eventBus.Subscribe(events.SubmissionCreated, func(event events.Event) {
 		payload := event.Payload.(events.SubmissionCreatedPayload)
 		ctx := context.Background()
-		if err := taskSvc.TransitionVolunteerStatus(ctx, payload.TaskSlug, "submitted"); err != nil {
-			fmt.Printf("failed to transition task status on submission: %v\n", err)
-		}
 		ledgerSvc.RecordValidatedTransaction(ctx, payload.TaskSlug, "SUBMISSION_CREATED", 0, fmt.Sprintf("volunteer-%d", payload.VolunteerID))
 	})
 
@@ -176,14 +173,6 @@ func newRouter(db *sql.DB, cfg *config.Config, lightningNode lightning.NodeClien
 		if payload.NewStatus == "completed" {
 			ctx := context.Background()
 			ledgerSvc.RecordValidatedTransaction(ctx, payload.TaskSlug, "TASK_STATUS_COMPLETED", 0, payload.TaskSlug)
-		}
-	})
-
-	eventBus.Subscribe(events.FinancialStateChanged, func(event events.Event) {
-		payload := event.Payload.(events.FinancialStateChangedPayload)
-		ctx := context.Background()
-		if payload.NewState == "LIQUIDATING" || payload.NewState == "READY_FOR_PAYOUT" {
-			escrowSvc.FinalizeAndBroadcastPayout(ctx, payload.TaskSlug)
 		}
 	})
 
@@ -224,6 +213,10 @@ func newRouter(db *sql.DB, cfg *config.Config, lightningNode lightning.NodeClien
 				tasks.GET("", taskH.ListTasks)
 				tasks.POST("", taskH.CreateTask)
 				tasks.GET(":slug", taskH.GetTask)
+				tasks.POST(":slug/start", taskH.StartTask)
+				tasks.POST(":slug/submit-for-verification", taskH.SubmitForVerification)
+				tasks.POST(":slug/verify", taskH.VerifyTask)
+				tasks.GET(":slug/state-history", taskH.ListStateHistory)
 				tasks.POST(":slug/apply", volunteerH.ApplyForTask)
 				tasks.POST(":slug/submissions", volunteerH.SubmitWork)
 				tasks.POST(":slug/trustees", trusteeH.RegisterTrusteeKeys)
