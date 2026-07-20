@@ -1,0 +1,11 @@
+DROP TABLE IF EXISTS payout_signatures;
+DROP TABLE IF EXISTS lightning_sync_state;
+DROP TABLE IF EXISTS lightning_invoices;
+DROP TABLE IF EXISTS volunteer_payments;
+DROP TABLE IF EXISTS ledger_entries;
+DROP TABLE IF EXISTS trustee_keys;
+DROP TABLE IF EXISTS task_submissions;
+DROP TABLE IF EXISTS task_applications;
+DROP TABLE IF EXISTS volunteer_profiles;
+DROP TABLE IF EXISTS tasks;
+DROP TABLE IF EXISTS users;

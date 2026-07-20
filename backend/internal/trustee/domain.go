@@ -1,13 +1,14 @@
 package trustee
 
-import "context"
+import (
+	"context"
+	"errors"
+)
 
-type User struct {
-	ID           int64
-	Email        string
-	PasswordHash string
-	DisplayName  string
-}
+var (
+	ErrRegistrationConflict = errors.New("trustee registration conflict")
+	ErrTaskNotFound         = errors.New("trustee task not found")
+)
 
 type TrusteeKey struct {
 	TaskSlug           string
@@ -17,12 +18,6 @@ type TrusteeKey struct {
 	WebCryptoPubkeyHex string
 }
 
-type UserRepository interface {
-	Create(ctx context.Context, u *User) error
-	GetByID(ctx context.Context, id int64) (*User, error)
-	GetByEmail(ctx context.Context, email string) (*User, error)
-}
-
 type KeyRepository interface {
 	SaveKeys(ctx context.Context, key *TrusteeKey) error
 	GetKeysByTask(ctx context.Context, taskSlug string) ([]TrusteeKey, error)
@@ -30,7 +25,7 @@ type KeyRepository interface {
 }
 
 type Service interface {
-	RegisterUser(ctx context.Context, email, password, displayName string) (*User, error)
 	AssignTrusteeSlot(ctx context.Context, slug string, key *TrusteeKey) error
 	VerifyWebCryptoSignature(ctx context.Context, pubKeyHex string, message []byte, signatureHex string) (bool, error)
+	GetTaskTrustees(ctx context.Context, taskSlug string) ([]TrusteeKey, error)
 }
