@@ -366,6 +366,9 @@ func mapWriteError(err error) error {
 	}
 	switch pg.Code {
 	case "23503":
+		if pg.ConstraintName == "trustee_assignments_user_id_fkey" {
+			return trustee.ErrUserNotFound
+		}
 		return trustee.ErrTaskNotFound
 	case "23505", "23514", "P0001":
 		return trustee.ErrRegistrationConflict

@@ -53,6 +53,10 @@ func (h *TrusteeHandler) NominateTrustee(c *gin.Context) {
 // @Produce json
 // @Param slug path string true "Task slug"
 // @Success 200 {object} AssignmentResponse
+// @Failure 400 {object} apihttp.ErrorResponse
+// @Failure 401 {object} apihttp.ErrorResponse
+// @Failure 409 {object} apihttp.ErrorResponse
+// @Failure 500 {object} apihttp.ErrorResponse
 // @Security CookieAuth
 // @Router /api/v1/tasks/{slug}/trustees/accept [post]
 func (h *TrusteeHandler) AcceptNomination(c *gin.Context) {
@@ -73,6 +77,10 @@ func (h *TrusteeHandler) AcceptNomination(c *gin.Context) {
 // @Param slug path string true "Task slug"
 // @Param body body RegisterTrusteeKeysRequest true "Key proofs"
 // @Success 201 {object} AssignmentResponse
+// @Failure 400 {object} apihttp.ErrorResponse
+// @Failure 401 {object} apihttp.ErrorResponse
+// @Failure 409 {object} apihttp.ErrorResponse
+// @Failure 500 {object} apihttp.ErrorResponse
 // @Security CookieAuth
 // @Router /api/v1/tasks/{slug}/trustees/keys [post]
 func (h *TrusteeHandler) RegisterTrusteeKeys(c *gin.Context) {
@@ -94,6 +102,10 @@ func (h *TrusteeHandler) RegisterTrusteeKeys(c *gin.Context) {
 // @Produce json
 // @Param slug path string true "Task slug"
 // @Success 200 {object} ChallengeResponse
+// @Failure 400 {object} apihttp.ErrorResponse
+// @Failure 401 {object} apihttp.ErrorResponse
+// @Failure 409 {object} apihttp.ErrorResponse
+// @Failure 500 {object} apihttp.ErrorResponse
 // @Security CookieAuth
 // @Router /api/v1/tasks/{slug}/trustees/keys/rotation-challenge [post]
 func (h *TrusteeHandler) PrepareKeyRotation(c *gin.Context) {
@@ -114,6 +126,10 @@ func (h *TrusteeHandler) PrepareKeyRotation(c *gin.Context) {
 // @Param slug path string true "Task slug"
 // @Param body body RotateTrusteeKeysRequest true "Replacement key proofs"
 // @Success 204
+// @Failure 400 {object} apihttp.ErrorResponse
+// @Failure 401 {object} apihttp.ErrorResponse
+// @Failure 409 {object} apihttp.ErrorResponse
+// @Failure 500 {object} apihttp.ErrorResponse
 // @Security CookieAuth
 // @Router /api/v1/tasks/{slug}/trustees/keys/rotate [post]
 func (h *TrusteeHandler) RotateTrusteeKeys(c *gin.Context) {
@@ -138,6 +154,12 @@ func (h *TrusteeHandler) RotateTrusteeKeys(c *gin.Context) {
 // @Param index path int true "Trustee slot (0-4)"
 // @Param body body ReplaceTrusteeRequest true "Replacement"
 // @Success 204
+// @Failure 400 {object} apihttp.ErrorResponse
+// @Failure 401 {object} apihttp.ErrorResponse
+// @Failure 403 {object} apihttp.ErrorResponse
+// @Failure 404 {object} apihttp.ErrorResponse
+// @Failure 409 {object} apihttp.ErrorResponse
+// @Failure 500 {object} apihttp.ErrorResponse
 // @Security CookieAuth
 // @Router /api/v1/tasks/{slug}/trustees/{index}/replace [post]
 func (h *TrusteeHandler) ReplaceTrustee(c *gin.Context) {
@@ -164,6 +186,9 @@ func (h *TrusteeHandler) ReplaceTrustee(c *gin.Context) {
 // @Produce json
 // @Param slug path string true "Task slug"
 // @Success 200 {object} RosterResponse
+// @Failure 400 {object} apihttp.ErrorResponse
+// @Failure 401 {object} apihttp.ErrorResponse
+// @Failure 500 {object} apihttp.ErrorResponse
 // @Security CookieAuth
 // @Router /api/v1/tasks/{slug}/trustees [get]
 func (h *TrusteeHandler) ListTrustees(c *gin.Context) {
@@ -197,6 +222,8 @@ func writeServiceError(c *gin.Context, err error, fallback string) {
 		apihttp.WriteError(c, http.StatusForbidden, apihttp.CodeUnauthorized, "task creator access required")
 	case errors.Is(err, trustee.ErrTaskNotFound):
 		apihttp.WriteError(c, http.StatusNotFound, apihttp.CodeNotFound, "task not found")
+	case errors.Is(err, trustee.ErrUserNotFound):
+		apihttp.WriteError(c, http.StatusNotFound, apihttp.CodeNotFound, "user not found")
 	case errors.Is(err, trusteeService.ErrTrusteeConflict), errors.Is(err, trusteeService.ErrTrusteeState):
 		apihttp.WriteError(c, http.StatusConflict, apihttp.CodeConflict, err.Error())
 	default:

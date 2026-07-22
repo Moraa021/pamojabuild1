@@ -144,6 +144,12 @@ BEGIN
         WHERE task_slug = NEW.task_slug
           AND user_id = NEW.volunteer_id
           AND status IN ('invited', 'accepted', 'active')
+    ) OR EXISTS (
+        -- trustee_keys remains the active authorization projection used by
+        -- later domains and may contain a migrated legacy relationship.
+        SELECT 1 FROM trustee_keys
+        WHERE task_slug = NEW.task_slug
+          AND user_id = NEW.volunteer_id
     ) THEN
         RAISE EXCEPTION 'a task trustee cannot also be a volunteer on that task'
             USING ERRCODE = '23514';

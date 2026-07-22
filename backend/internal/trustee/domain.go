@@ -10,6 +10,7 @@ var (
 	ErrRegistrationConflict = errors.New("trustee registration conflict")
 	ErrTaskNotFound         = errors.New("trustee task not found")
 	ErrAssignmentNotFound   = errors.New("trustee assignment not found")
+	ErrUserNotFound         = errors.New("trustee nominee not found")
 	ErrInvalidState         = errors.New("trustee assignment state conflict")
 	ErrNotTaskCreator       = errors.New("only the task creator may manage trustees")
 )

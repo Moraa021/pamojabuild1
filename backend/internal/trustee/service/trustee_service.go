@@ -256,6 +256,8 @@ func mapRepositoryError(action string, err error) error {
 		return ErrTrusteeConflict
 	case errors.Is(err, trustee.ErrTaskNotFound):
 		return fmt.Errorf("%s: %w", action, trustee.ErrTaskNotFound)
+	case errors.Is(err, trustee.ErrUserNotFound):
+		return fmt.Errorf("%s: %w", action, trustee.ErrUserNotFound)
 	default:
 		return fmt.Errorf("%s: %w", action, err)
 	}
