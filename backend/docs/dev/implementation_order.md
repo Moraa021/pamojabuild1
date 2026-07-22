@@ -1,6 +1,6 @@
 # Backend Implementation Order
 
-Last updated: 2026-07-18
+Last updated: 2026-07-22
 
 This is the short continuity checklist for implementation. The detailed system reference is [app_flow_deep_dive.md](app_flow_deep_dive.md).
 
@@ -24,8 +24,8 @@ Status key: `NEXT`, `PENDING`, `DONE`, `BLOCKED`.
 2. **`DONE` — Accounts and authorization:** Accounts are general, admin is the only global capability, authentication uses revocable server-side sessions in secure HttpOnly cookies, actor IDs come from authentication, trustee payout routes require task membership, and PostgreSQL enforces the trustee/volunteer conflict.
 3. **`DONE` — API contracts:** Registered routes use explicit snake_case DTOs, one safe error envelope, strict request decoding, service validation, intentional HTTP status codes, documented cookie authentication, paginated task filters, and `/auth/me`; frontend integration changes are recorded in `frontend_handoff.md`.
 4. **`DONE` — Task state machines:** Work transitions are `open -> in_progress -> pending_verification -> completed`; creator and independent-trustee authorization, readiness checks, row locking/versioning, immutable history, idempotency, and atomic completion/donation closure are enforced. Financial transitions are linear and internal-only; `SYSTEM_LOCKDOWN` is reserved but deliberately unavailable until recovery rules are approved.
-5. **`NEXT` — Trustee onboarding:** Implement nomination, acceptance, unique membership, key proof/validation, public roster data, replacement, and rotation.
-6. **`PENDING` — Volunteer workflow:** Implement self-assignment, application review/selection, transactional capacity, assignment-level progress, and evidence review; relationship mutations must share the task-row lock used by state readiness checks.
+5. **`DONE` — Trustee onboarding:** Creators nominate five unique, non-conflicted task trustees; invitees accept before proving testnet/mainnet-matched xpub and browser-key ownership; only active memberships authorize trustee actions; the safe public roster omits key material; and replacement/rotation preserve history without lowering the future 3-of-5 payout threshold.
+6. **`NEXT` — Volunteer workflow:** Implement self-assignment, application review/selection, transactional capacity, assignment-level progress, and evidence review; relationship mutations must share the task-row lock used by state readiness checks.
 7. **`PENDING` — Lightning donations:** Complete invoice status/history behavior and harden settlement recovery, accounting delivery, and reconciliation; invoice creation already requires an existing `ACTIVE` task.
 8. **`PENDING` — Ledger:** Add transactional, PostgreSQL-safe appends; unique references; explicit debits/credits; durable events; integrity checkpoints; and reconciliation.
 9. **`PENDING` — Escrow and swaps:** Implement xpub validation, deterministic 3-of-5 vaults, derivation/UTXO records, and Lightning-to-on-chain swaps.
@@ -46,9 +46,8 @@ step so later schemas and APIs do not encode an accidental policy.
 
 ### One or three trustees for work verification
 
-**Decision needed:** During step 5, before trustee onboarding assigns
-capabilities and the frontend presents trustee actions. It must be final before
-step 6 connects evidence review to completion.
+**Decision adopted in step 5:** One independent active trustee verifies work.
+The 3-of-5 threshold applies only to later payout authorization.
 
 **Recommendation:** Require one independent trustee to verify task completion,
 while retaining 3-of-5 exclusively for payout authorization. Work verification
@@ -67,9 +66,8 @@ task status field.
 
 ### Whether work verification also approves payout
 
-**Decision needed:** Confirm the separation during step 5 when trustee duties
-are defined; it becomes irreversible design input in steps 9 and 10 when the
-payout intent and PSBT approval model are created.
+**Decision adopted in step 5:** Work verification and payout approval are
+separate actions and records.
 
 **Recommendation:** Keep work verification and payout approval separate.
 Verification should confirm the work, complete the work lifecycle, close
@@ -159,10 +157,11 @@ failure cannot roll back submission or state changes.
 
 ### Cancellation, failed tasks, unavailable trustees, and donor refunds
 
-**Decision needed:** Define the user-facing cancellation/refund policy before
-step 7 accepts production donations. Trustee liveness and cryptographic
-recovery must be decided during step 5 and finalized before step 9 creates
-3-of-5 vaults.
+**Decision status:** Trustee liveness policy was adopted in step 5: replace an
+unavailable trustee through the audited onboarding workflow and never lower the
+3-of-5 threshold. The cryptographic recovery script remains a required step 9
+decision before funds enter a vault. Define the user-facing cancellation/refund
+policy before step 7 accepts production donations.
 
 **Recommendation:** Support platform-triggered refunds when a task cannot
 proceed, but do not let a creator immediately send money elsewhere or silently

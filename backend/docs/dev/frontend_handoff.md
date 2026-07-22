@@ -258,8 +258,7 @@ and show payment confirmation only after `settled`.
 }
 ```
 
-Do not send `user_id`. This remains an incomplete self-claim scaffold until
-trustee nomination/onboarding is implemented.
+This route was removed by step 5. Do not keep using the self-claim contract.
 
 `GET /api/v1/trustees/payouts/:slug` no longer accepts
 `destination_address` or `volunteer_invoice` query parameters. Those values
@@ -337,10 +336,9 @@ Content-Type: application/json
 
 This action requires a task trustee who is neither the creator nor a volunteer
 on that task. It atomically moves work to `completed` and financial state from
-`ACTIVE` to `LIQUIDATING`; new donation invoices then return `409`. Trustee
-nomination/acceptance is step 5, so do not expose this control as a finished
-production verification experience while trustee registration remains a
-self-claim scaffold.
+`ACTIVE` to `LIQUIDATING`; new donation invoices then return `409`. The
+onboarding flow described in step 5 is now complete, so expose verification
+only to accounts whose roster status is `active`.
 
 `reason` is optional on all three actions and is limited to 500 characters.
 Send `{}` when it is omitted. A successful action returns:
@@ -388,3 +386,52 @@ Only the completion boundary is currently connected. Later backend payout
 services—not browser callers—will advance the remaining financial states.
 `SYSTEM_LOCKDOWN` is reserved in the schema but has no executable transition
 until entry, recovery, and authorization rules are approved.
+
+## 5. Trustee onboarding
+
+Replace the trustee self-claim screen with this sequence:
+
+1. The creator sends `POST /api/v1/tasks/:slug/trustees/nominations` with
+   `trustee_index`, the nominee's `user_id`, and optional `message`.
+2. The invited account sends `POST /api/v1/tasks/:slug/trustees/accept` with no
+   JSON identity. The response includes a 64-hex-character `proof_challenge`.
+3. The trustee generates/loads their xpub and non-exportable P-256 browser key,
+   signs the canonical proof below with both keys, then sends
+   `POST /api/v1/tasks/:slug/trustees/keys`.
+
+The canonical UTF-8 proof text is:
+
+```text
+pamojabuild:trustee-key-proof:v1:<task_slug>:<user_id>:<proof_challenge>:<xpub>:<web_crypto_pubkey_hex>
+```
+
+Hash that exact text once with SHA-256. Sign the digest with the private child
+key corresponding to xpub path `m/0/0`; send the DER signature as lowercase hex
+in `xpub_proof_signature_hex`. Export the uncompressed raw P-256 public key
+(`04 || X || Y`) as hex in `web_crypto_pubkey_hex`. WebCrypto may return its
+ECDSA signature as raw 64-byte `r || s`; send that hex in
+`web_crypto_proof_signature_hex` (DER is also accepted). Send the challenge
+unchanged. The backend validates the xpub against `BITCOIN_NETWORK`, which
+defaults to `testnet3`; production must explicitly use `mainnet`.
+
+Use `GET /api/v1/tasks/:slug/trustees` for the donor/creator roster. It returns
+`{ "trustees": [...] }` with display name, user ID, slot, lifecycle status, and
+timestamps. It deliberately omits xpubs, browser keys and proof material.
+
+For an active trustee's rotation, first call
+`POST /api/v1/tasks/:slug/trustees/keys/rotation-challenge`, sign the new key
+pair using the returned challenge, then call
+`POST /api/v1/tasks/:slug/trustees/keys/rotate` with the key fields plus a
+required `reason`. Success is `204`.
+
+Creator replacement is
+`POST /api/v1/tasks/:slug/trustees/:index/replace` with `user_id`, required
+`reason`, and optional `message`. It immediately removes the old account's
+trustee authorization and leaves the successor `invited`; the successor must
+complete the normal acceptance/proof sequence. Never present replacement as a
+way to lower the future 3-of-5 payout threshold.
+
+The current browser page keeps its non-exportable private key only in memory.
+Move it to IndexedDB or integrate a reviewed external signer before presenting
+later payout signing as durable. Never upload a private xpub or browser private
+key.

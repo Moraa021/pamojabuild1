@@ -1,6 +1,6 @@
 # PamojaBuild App Flow: Beginner-Friendly Deep Dive
 
-Last reviewed against the code: 2026-07-18
+Last reviewed against the code: 2026-07-22
 
 ## Why this document exists
 
@@ -68,11 +68,11 @@ These lifecycles should coordinate, but they are not the same thing.
 | Lightning invoice creation | Implemented foundation | Real gRPC and REST LND clients exist, invoices are saved, and status can be queried. |
 | Lightning settlement | Implemented foundation | Settlements resume after restart and duplicate notices are handled idempotently. |
 | Ledger HMAC chain | Partial security mechanism | Entries are chained and can be verified, but accounting rules and production concurrency/security are incomplete. |
-| Trustee assignment | Unsafe scaffold | Five numbered slots can be filled, but there is no real selection/onboarding policy or authorization. |
+| Trustee onboarding | Implemented foundation | Creators nominate five task-specific trustees; invitees accept and prove both keys before active authorization; roster, replacement, and key rotation preserve safe public/audit data. |
 | xpub derivation / on-chain vault | Not implemented | Xpub strings are stored, but child keys and 3-of-5 addresses are not created. |
 | Submarine swaps | Not implemented | No Lightning-to-on-chain transfer is executed or recorded correctly. |
 | Payout manifest / PSBT | Placeholder | The API returns literal placeholder values and zero amounts. |
-| Trustee signature validation | Not implemented securely | Submitted strings are counted without verifying trustee membership or either signature. |
+| Payout signature validation | Not implemented securely | Active trustee membership is checked, but payout fragments are still counted without cryptographic verification against a frozen payout intent. |
 | Payout broadcast | Placeholder | It prints a log line; it does not combine a PSBT, broadcast Bitcoin, pay Lightning, or update state/ledger. |
 
 ## Vocabulary without the jargon
@@ -315,7 +315,7 @@ value in JSON, so normal frontend JavaScript cannot read it.
 - Cookie authentication requires exact credentialed CORS origins and CSRF controls. The backend now rejects unlisted origins and browser cross-site mutations; deployment must configure `CORS_ALLOWED_ORIGINS`.
 - Production requires HTTPS because session cookies are `Secure` by default. Local HTTP development must explicitly set `SESSION_COOKIE_SECURE=false`.
 - The ledger HMAC secret still has an insecure fallback; ledger hardening remains implementation step 8.
-- Trustee-only payout routes now check the authenticated account against the task's trustee rows. The incomplete trustee-registration route still allows self-claiming an empty slot; nomination and acceptance are intentionally deferred to trustee onboarding in step 5.
+- Trustee-only verification and payout scaffolds authorize only active trustee key projections. Invitation or acceptance alone grants no trustee capability.
 - Endpoint-by-endpoint creator ownership rules will expand as the missing creator management routes are built.
 - Session cleanup and a “sign out all devices” operation are not implemented.
 - Public task browsing and donating still need an explicit product/API decision.
@@ -712,7 +712,10 @@ entry, authorization, and recovery rules exist.
 
 ### Intended trust model
 
-Each task should have five real, task-specific community trustees. “Who can be one?” is currently a product/security policy question that the code does not answer.
+Each task has five real, task-specific community trustee slots. The creator
+nominates general accounts, but cannot nominate themselves or any account with
+a volunteer relationship on that task. Nominees must knowingly accept and
+prove control of both registered keys before becoming active.
 
 A safe onboarding policy should define:
 
@@ -726,61 +729,50 @@ A safe onboarding policy should define:
 - whether the same person can hold multiple slots (normally no);
 - how users verify they are attaching keys to the correct task and network.
 
-### Current frontend and API
+### Implemented onboarding flow
 
-Page: [trusteeDashboardPage.js](../../../frontend/js/pages/trusteeDashboardPage.js)
-
-An authenticated user selects slot `0` through `4`, pastes an xpub, generates a browser key pair, and sends:
-
-```json
-{
-  "trustee_index": 2,
-  "xpub": "xpub...",
-  "web_crypto_pubkey_hex": "04..."
-}
-```
-
-Endpoint: `POST /api/v1/tasks/:slug/trustees`
-
-Backend:
-
-1. checks the index is 0–4;
-2. checks whether that task/index exists;
-3. inserts into `trustee_keys`;
-4. publishes `trustee.registered`.
-
-The table's primary key `(task_slug, trustee_index)` ensures only one row per slot.
-
-Schema: [initial PostgreSQL migration](../../db/migrations/20260718132603_initial_schema.up.sql)
-
-The backend now ignores any browser-supplied identity and uses the authenticated account ID. The database also rejects either direction of a same-task trustee/volunteer conflict.
-
-The registration response is an explicit object containing only `task_slug`,
-`trustee_index`, and the authenticated `user_id`; key material is not echoed.
-
-### Why it is still unsafe today
-
-- There is no invitation/nomination record proving the user was selected.
-- Any authenticated account can still self-claim an empty slot until step 5 replaces this scaffold with nomination and acceptance.
-- The schema prevents the same user from occupying multiple slots for one task.
-- Xpub is only checked superficially in the browser; backend does not parse it, validate network/version, or prove key ownership.
-- Browser public keys are not validated at registration.
-- Slot assignment checks then writes in separate operations, creating a race. The repository also uses an upsert, so direct/concurrent behavior can replace a slot.
-- There is no trustee list route registered; the earlier unregistered handler was removed so generated API documentation does not advertise a nonexistent endpoint.
-- No replacement/key rotation history or revocation exists.
-- Private browser keys are not persisted safely. The generated key is stored in a local variable and is not connected to the payout page's separate `_sessionPrivateKey` variable.
-
-### Intended implementation
-
-Use an explicit task trustee assignment record with states such as:
+The task creator nominates a general account into one of five numbered slots.
+The database locks the task, verifies creator ownership, and rejects duplicate
+slots, duplicate task membership, creators, and anyone with a volunteer
+relationship on the same task. The invitee—not the creator—must then accept.
 
 ```text
-INVITED -> ACCEPTED -> KEYS_REGISTERED -> ACTIVE
-                               |
-                               +-> REVOKED / REPLACED
+invited -> accepted -> active
+                        |
+                        +-> atomic replacement or versioned key rotation
 ```
 
-Bind it to authenticated user ID, enforce one user per task, validate both public keys, require proof of possession, store key version/history, and make slot claiming a single conditional transaction.
+Acceptance creates a random one-time proof challenge. Activation requires an
+xpub for the configured Bitcoin network, a valid signature from its `m/0/0`
+child key, a raw uncompressed P-256 browser public key, and a valid P-256
+signature. Both signatures cover the task, authenticated user, challenge, and
+both public keys. The challenge is consumed transactionally when activation
+succeeds. Only then is `trustee_keys` populated as the active authorization
+projection used by task verification and later payout scaffolds.
+
+`trustee_assignments` stores the current slot lifecycle,
+`trustee_assignment_history` preserves nomination/acceptance/activation and
+replacement actions, and `trustee_key_versions` preserves rotations and revoked
+keys. Active xpubs and browser keys are globally unique. Replacing a trustee
+removes the old active authorization and invites the successor in the same
+transaction; it never lowers the later payout threshold.
+
+`GET /api/v1/tasks/:slug/trustees` returns display identity, slot and onboarding
+status but never xpubs, browser keys, challenges, or proof signatures. Task
+browsing is still session-protected globally, so “public” currently means safe
+for any authenticated task viewer rather than anonymous internet access.
+
+### Remaining trustee concerns
+
+- The frontend must persist its non-exportable browser private key in IndexedDB
+  or use a reviewed hardware/native signer; the current page-local variable is
+  not durable enough for later payouts.
+- Identity/community-vetting is a creator responsibility in the current
+  product; formal platform attestation is not implemented.
+- Replacement protects application authorization before escrow. Step 9 must
+  still define the vault recovery script because changing database membership
+  cannot change keys controlling coins already deposited in an old 3-of-5
+  script.
 
 ## Flow 6: Ledger accounting and security
 
@@ -1015,7 +1007,9 @@ Failures need explicit resumable states. If L1 broadcasts but L2 fails, retry on
 | View state history | Frontend integration required | `GET /tasks/:slug/state-history` | task state service/repo | `task_state_transitions` |
 | Create donation invoice | donation page/store | `POST /tasks/:slug/donate` | Lightning service/LND/repo | `lightning_invoices` |
 | Confirm donation | UI missing polling | `GET /lightning/invoices/status` exists | LND listener + event subscriber | `lightning_invoices`, `lightning_sync_state`, `ledger_entries` |
-| Register trustee keys | trustee page/store | `POST /tasks/:slug/trustees` | trustee service/repo | `trustee_keys` |
+| Nominate/accept trustee | Frontend integration required | `POST /tasks/:slug/trustees/nominations`, `/accept` | trustee service/repo | `trustee_assignments`, history |
+| Register/rotate trustee keys | Frontend integration required | `POST /tasks/:slug/trustees/keys*` | trustee proof service/repo | `trustee_key_versions`, `trustee_keys` |
+| View trustee roster | Frontend integration required | `GET /tasks/:slug/trustees` | trustee service/repo | safe assignment fields only |
 | Generate vault/swap | No UI/API | None | Not implemented | Tables missing |
 | Review payout | payout page/store | `GET /trustees/payouts/:slug` | escrow placeholder | reads `trustee_keys`, `ledger_entries`; returns placeholders |
 | Sign payout | payout page/store | `POST /trustees/payouts/:slug/sign` | escrow placeholder | `payout_signatures` |
@@ -1033,7 +1027,10 @@ Failures need explicit resumable states. If L1 broadcasts but L2 fails, retry on
 | `volunteer_profiles` | Bio, skills, payout addresses, reputation totals | Auto-created with the account; partial updates overwrite unrelated values. |
 | `task_applications` | Volunteer requests to join tasks | Unique per task/account and conflict-guarded against trustees; no approval API; capacity rules missing. |
 | `task_submissions` | Work descriptions and evidence URL arrays | No review API; weak evidence model; multiple-submission policy unclear. |
-| `trustee_keys` | Five indexed user/xpub/browser-key rows per task | Unique user per task and conflict-guarded against volunteers; no invitation, key uniqueness, rotation, validation, or history. |
+| `trustee_assignments` | Five creator-nominated task slots and their invitation/acceptance/active lifecycle | Community identity vetting remains a product/process responsibility. |
+| `trustee_assignment_history` | Immutable actor/reason history for trustee lifecycle changes | External notification delivery is not implemented. |
+| `trustee_key_versions` | Proof-bearing, unique, versioned xpub and P-256 registrations | Xpub privacy/encryption policy remains for production hardening. |
+| `trustee_keys` | Active-key compatibility projection used for authorization and later escrow scaffolds | It is not key history; read key versions for audit/recovery. |
 | `ledger_entries` | HMAC-chained task event/accounting rows | Accounting model, concurrency, unique references, timestamps, and durable recovery incomplete. |
 | `lightning_invoices` | Incoming Lightning requests and settlement state | Donor identity/history and reconciliation UI missing. |
 | `lightning_sync_state` | Durable LND settlement cursor | Appropriate foundation; needs operational monitoring. |
@@ -1043,7 +1040,6 @@ Failures need explicit resumable states. If L1 broadcasts but L2 fails, retry on
 Tables still needed or needing redesign for later phases likely include:
 
 - task state transition history;
-- trustee invitations/assignments and key versions;
 - task vaults, scripts, derivation paths, and UTXOs;
 - swap attempts and confirmations;
 - payout intents/manifests and payout execution attempts;
@@ -1135,7 +1131,7 @@ If time is short, read in this order:
 2. [initial PostgreSQL migration](../../db/migrations/20260718132603_initial_schema.up.sql) and [task domain](../../internal/task/domain.go) — the two task state fields.
 3. [Lightning service](../../internal/lightning/service/lightning_service.go) and [repository](../../internal/lightning/repository/postgres.go) — the best-developed money flow.
 4. [ledger service](../../internal/ledger/service/ledger_service.go) and [repository](../../internal/ledger/repository/postgres.go) — HMAC chain and current balances.
-5. [trustee service](../../internal/trustee/service/trustee_service.go) and [trustee page](../../../frontend/js/pages/trusteeDashboardPage.js) — current assignment/key gaps.
+5. [trustee service](../../internal/trustee/service/trustee_service.go) and [trustee page](../../../frontend/js/pages/trusteeDashboardPage.js) — implemented onboarding and remaining frontend integration gaps.
 6. [escrow service](../../internal/escrow/service/escrow_service.go), [handler](../../internal/escrow/delivery/http/handler.go), and [payout page](../../../frontend/js/pages/payoutReviewPage.js) — clearly see the payout placeholders.
 7. [volunteer services](../../internal/volunteer/service/) and [volunteer repository](../../internal/volunteer/repository/postgres.go) — applications and submissions.
 8. [VerificationTracker.js](../../../frontend/js/components/VerificationTracker.js) — the frontend-only combined journey.
@@ -1144,15 +1140,13 @@ If time is short, read in this order:
 
 PamojaBuild currently has a promising modular scaffold and a meaningful Lightning ingestion foundation. The code can create and track Lightning invoices, recover settlement listening after restart, and credit an HMAC-chained task ledger once per normal settlement path.
 
-The rest of the user journey is much less complete. Volunteer approval, trustee
-selection/onboarding, on-chain vault creation, swaps, PSBTs, cryptographic
+The rest of the user journey is much less complete. Volunteer approval,
+on-chain vault creation, swaps, PSBTs, cryptographic
 payout approval, payout execution, and final reconciliation are not finished.
 Some screens make these features look more complete than they are because they
 are wired to placeholder responses or nonexistent endpoints.
 
-The next dependency is trustworthy trustee nomination and acceptance; the
-state machine currently recognizes the existing task-trustee relationship, but
-that relationship is still created through an unsafe self-claim scaffold.
-After trustee and volunteer workflows, harden incoming accounting, freeze the
+Trustee nomination, acceptance, key proof, replacement, rotation, and safe
+roster reads are now implemented. After the volunteer workflow, harden incoming accounting, freeze the
 vault/payout data model, build escrow and PSBT engines, and only then connect
 them through one idempotent payout orchestrator.
