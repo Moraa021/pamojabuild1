@@ -19,6 +19,7 @@ type Config struct {
 	LNDMacaroonHex      string
 	LNDTLS              string
 	ServerSecret        string
+	BitcoinNetwork      string
 }
 
 func Load() *Config {
@@ -39,6 +40,7 @@ func Load() *Config {
 		LNDMacaroonHex:      getEnv("LND_MACAROON_HEX", ""),
 		LNDTLS:              getEnv("LND_TLS_PATH", ""),
 		ServerSecret:        getEnv("SERVER_SECRET", "ledger-hmac-secret"),
+		BitcoinNetwork:      getEnv("BITCOIN_NETWORK", "testnet3"),
 	}
 }
 

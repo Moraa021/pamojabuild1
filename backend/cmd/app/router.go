@@ -123,7 +123,7 @@ func newRouter(db *sql.DB, cfg *config.Config, lightningNode lightning.NodeClien
 	taskH := taskHandler.NewTaskHandler(taskSvc)
 
 	trusteeRepo := trusteeRepo.NewTrusteeRepository(db)
-	trusteeSvc := trusteeService.NewTrusteeService(trusteeRepo, eventBus)
+	trusteeSvc := trusteeService.NewTrusteeService(trusteeRepo, eventBus, cfg.BitcoinNetwork)
 	trusteeH := trusteeHandler.NewTrusteeHandler(trusteeSvc)
 
 	lightningRepo := lightningRepo.NewLightningRepository(db)
@@ -219,7 +219,13 @@ func newRouter(db *sql.DB, cfg *config.Config, lightningNode lightning.NodeClien
 				tasks.GET(":slug/state-history", taskH.ListStateHistory)
 				tasks.POST(":slug/apply", volunteerH.ApplyForTask)
 				tasks.POST(":slug/submissions", volunteerH.SubmitWork)
-				tasks.POST(":slug/trustees", trusteeH.RegisterTrusteeKeys)
+				tasks.GET(":slug/trustees", trusteeH.ListTrustees)
+				tasks.POST(":slug/trustees/nominations", trusteeH.NominateTrustee)
+				tasks.POST(":slug/trustees/accept", trusteeH.AcceptNomination)
+				tasks.POST(":slug/trustees/keys", trusteeH.RegisterTrusteeKeys)
+				tasks.POST(":slug/trustees/keys/rotation-challenge", trusteeH.PrepareKeyRotation)
+				tasks.POST(":slug/trustees/keys/rotate", trusteeH.RotateTrusteeKeys)
+				tasks.POST(":slug/trustees/:index/replace", trusteeH.ReplaceTrustee)
 				tasks.POST(":slug/donate", lightningH.RequestDonationInvoice)
 			}
 
