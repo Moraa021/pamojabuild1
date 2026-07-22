@@ -110,6 +110,15 @@ func TestRegisterKeysValidatesBothOwnershipProofs(t *testing.T) {
 	}
 }
 
+func TestRegisterKeysAcceptsRawWebCryptoSignature(t *testing.T) {
+	repo := &mockTrusteeRepo{}
+	svc := NewTrusteeService(repo, nil, "testnet3")
+	r := rawWebRegistration(t, "task", 8, "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+	if _, err := svc.RegisterKeys(context.Background(), "task", 8, r); err != nil {
+		t.Fatalf("register raw WebCrypto signature: %v", err)
+	}
+}
+
 func TestRegisterKeysRejectsProofForDifferentTask(t *testing.T) {
 	svc := NewTrusteeService(&mockTrusteeRepo{}, nil, "testnet3")
 	r := validRegistration(t, "task-a", 8, "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
@@ -182,4 +191,48 @@ func validRegistration(t *testing.T, taskSlug string, userID int64, challenge st
 	}
 	r.WebCryptoProofSignatureHex = hex.EncodeToString(webSig)
 	return r
+}
+
+func rawWebRegistration(t *testing.T, taskSlug string, userID int64, challenge string) *trustee.KeyRegistration {
+	t.Helper()
+	seed := make([]byte, 32)
+	if _, err := rand.Read(seed); err != nil {
+		t.Fatal(err)
+	}
+	master, err := hdkeychain.NewMaster(seed, &chaincfg.TestNet3Params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	public, err := master.Neuter()
+	if err != nil {
+		t.Fatal(err)
+	}
+	privateKey, err := standardecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registration := &trustee.KeyRegistration{TaskSlug: taskSlug, UserID: userID, Xpub: public.String(), WebCryptoPubkeyHex: hex.EncodeToString(elliptic.Marshal(elliptic.P256(), privateKey.X, privateKey.Y)), ProofChallenge: challenge}
+	digest := sha256.Sum256(proofMessage(registration))
+	child, err := master.Derive(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	child, err = child.Derive(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	xpubPrivate, err := child.ECPrivKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	registration.XpubProofSignatureHex = hex.EncodeToString(btcecdsa.Sign(xpubPrivate, digest[:]).Serialize())
+	r, s, err := standardecdsa.Sign(rand.Reader, privateKey, digest[:])
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := make([]byte, 64)
+	r.FillBytes(raw[:32])
+	s.FillBytes(raw[32:])
+	registration.WebCryptoProofSignatureHex = hex.EncodeToString(raw)
+	return registration
 }

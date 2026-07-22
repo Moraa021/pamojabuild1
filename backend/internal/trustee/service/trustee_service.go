@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"math/big"
 	"strings"
 
 	btcecdsa "github.com/btcsuite/btcd/btcec/v2/ecdsa"
@@ -209,6 +210,14 @@ func verifyWebCryptoProof(publicHex string, message []byte, signatureHex string)
 		return false
 	}
 	digest := sha256.Sum256(message)
+	if len(sig) == 64 {
+		// WebCrypto specifies the fixed-width IEEE P1363 r||s encoding, while
+		// native/mobile clients commonly produce ASN.1 DER. Supporting both at
+		// this boundary avoids asking browser code to rewrite signatures.
+		r := new(big.Int).SetBytes(sig[:32])
+		s := new(big.Int).SetBytes(sig[32:])
+		return standardecdsa.Verify(&standardecdsa.PublicKey{Curve: elliptic.P256(), X: x, Y: y}, digest[:], r, s)
+	}
 	return standardecdsa.VerifyASN1(&standardecdsa.PublicKey{Curve: elliptic.P256(), X: x, Y: y}, digest[:], sig)
 }
 
