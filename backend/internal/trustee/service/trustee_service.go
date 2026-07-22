@@ -149,7 +149,7 @@ func (s *TrusteeService) validateProofs(r *trustee.KeyRegistration) error {
 	r.XpubProofSignatureHex = strings.TrimSpace(r.XpubProofSignatureHex)
 	r.WebCryptoProofSignatureHex = strings.TrimSpace(r.WebCryptoProofSignatureHex)
 	r.ProofChallenge = strings.TrimSpace(r.ProofChallenge)
-	if r.TaskSlug == "" || r.UserID <= 0 || r.Xpub == "" || len(r.Xpub) > 255 || r.WebCryptoPubkeyHex == "" || len(r.WebCryptoPubkeyHex) > 512 || r.ProofChallenge == "" {
+	if s.network == nil || r.TaskSlug == "" || r.UserID <= 0 || r.Xpub == "" || len(r.Xpub) > 255 || r.WebCryptoPubkeyHex == "" || len(r.WebCryptoPubkeyHex) > 512 || r.ProofChallenge == "" {
 		return ErrInvalidTrusteeKeys
 	}
 	message := proofMessage(r)
@@ -228,8 +228,12 @@ func networkParams(value string) *chaincfg.Params {
 		return &chaincfg.RegressionNetParams
 	case "signet":
 		return &chaincfg.SigNetParams
-	default:
+	case "", "testnet", "testnet3":
 		return &chaincfg.TestNet3Params
+	default:
+		// An unknown deployment value must not silently reinterpret production
+		// xpubs as another network. Key activation fails closed instead.
+		return nil
 	}
 }
 

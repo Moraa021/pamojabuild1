@@ -6,6 +6,7 @@ func TestLoadUsesSecureSessionDefaults(t *testing.T) {
 	t.Setenv("SESSION_COOKIE_SECURE", "")
 	t.Setenv("SESSION_COOKIE_NAME", "")
 	t.Setenv("CORS_ALLOWED_ORIGINS", "")
+	t.Setenv("BITCOIN_NETWORK", "")
 
 	config := Load()
 
@@ -17,6 +18,9 @@ func TestLoadUsesSecureSessionDefaults(t *testing.T) {
 	}
 	if len(config.CORSAllowedOrigins) != 1 || config.CORSAllowedOrigins[0] != "http://localhost:3000" {
 		t.Fatalf("unexpected default allowed origins: %#v", config.CORSAllowedOrigins)
+	}
+	if config.BitcoinNetwork != "testnet3" {
+		t.Fatalf("unexpected default bitcoin network %q", config.BitcoinNetwork)
 	}
 }
 

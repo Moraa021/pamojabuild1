@@ -118,6 +118,14 @@ func TestRegisterKeysRejectsProofForDifferentTask(t *testing.T) {
 	}
 }
 
+func TestRegisterKeysFailsClosedForUnknownBitcoinNetwork(t *testing.T) {
+	svc := NewTrusteeService(&mockTrusteeRepo{}, nil, "typo-net")
+	r := validRegistration(t, "task", 8, "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+	if _, err := svc.RegisterKeys(context.Background(), "task", 8, r); !errors.Is(err, ErrInvalidTrusteeKeys) {
+		t.Fatalf("expected invalid keys for unknown network, got %v", err)
+	}
+}
+
 func TestPrepareRotationPersistsFreshChallenge(t *testing.T) {
 	repo := &mockTrusteeRepo{}
 	svc := NewTrusteeService(repo, nil, "testnet3")
